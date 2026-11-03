@@ -65,6 +65,7 @@ Arduino IDE 또는 `arduino-cli`로 [library_controller.ino](arduino/firmware/li
 - [API_SPEC.md](docs/API_SPEC.md) — REST/WebSocket API 명세
 - [DATABASE.md](docs/DATABASE.md) — D1 스키마 설명
 - [HARDWARE.md](docs/HARDWARE.md) — 라즈베리파이·Arduino 연결 설계
+- [BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) — 백업 · 롤백 · 재구축 (Cloudflare 설정, 라즈베리파이 설정 명령 전체)
 - [CLAUDE.md](CLAUDE.md) — 개발 규칙 (AI 도우미 및 개발자 공통)
 
 ## 보안 원칙 요약
