@@ -17,7 +17,7 @@ from . import __version__
 from .cloud_client import CloudClient, CloudRequestRejected, CloudUnavailableError
 from .config import AgentConfig, ConfigError, load_config, load_dotenv_file
 from .event_handler import EventHandler
-from .lcd_display import CharacterLcd
+from .lcd_display import create_lcd
 from .library_status import LibraryStatusRelay
 from .logger import get_logger, log_event, setup_logging
 from .room_display import RoomDisplay
@@ -48,8 +48,11 @@ async def _periodic_sync(handler: EventHandler, seats: SeatManager, interval: fl
             await handler.refresh_seats()
 
 
-async def _lcd_loop(lcd: CharacterLcd, display: RoomDisplay, stop: asyncio.Event) -> None:
-    """화면 내용이 바뀔 때만 LCD 에 쓴다. LCD 오류는 다른 기능에 영향을 주지 않으며 30초 후 재시도."""
+async def _lcd_loop(lcd, display: RoomDisplay, stop: asyncio.Event, colors: tuple = ((0, 255, 0), (255, 0, 0))) -> None:
+    """화면 내용이 바뀔 때만 LCD 에 쓴다. LCD 오류는 다른 기능에 영향을 주지 않으며 30초 후 재시도.
+
+    colors: (평상시, Offline) 백라이트 색상. RGB 미지원 LCD 에서는 무시된다.
+    """
     log = get_logger("lcd")
     last = None
     while not stop.is_set():
@@ -66,6 +69,7 @@ async def _lcd_loop(lcd: CharacterLcd, display: RoomDisplay, stop: asyncio.Event
         frame = display.frame()
         if frame != last:
             try:
+                await asyncio.to_thread(lcd.set_color, colors[1] if frame.offline else colors[0])
                 await asyncio.to_thread(lcd.write_lines, (frame.line1, frame.line2))
                 last = frame
             except Exception as exc:  # noqa: BLE001
@@ -122,8 +126,9 @@ async def run_agent(config: AgentConfig) -> None:
             asyncio.create_task(_periodic_sync(handler, seats, config.seat_sync_seconds, stop), name="sync"),
         ]
         if config.lcd_enabled:
-            lcd = CharacterLcd(config.lcd_i2c_bus, config.lcd_i2c_address)
-            tasks.append(asyncio.create_task(_lcd_loop(lcd, display, stop), name="lcd"))
+            lcd = create_lcd(config.lcd_type, config.lcd_i2c_bus, config.lcd_i2c_address, config.lcd_rgb_address)
+            colors = (config.lcd_color_normal, config.lcd_color_offline)
+            tasks.append(asyncio.create_task(_lcd_loop(lcd, display, stop, colors), name="lcd"))
         if config.central_library_relay:
             relay = LibraryStatusRelay(
                 cloud,

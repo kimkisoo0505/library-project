@@ -27,6 +27,7 @@ INTERMEDIATE_CERT = Path(__file__).resolve().parent / "certs" / "rapidssl-tls-rs
 USER_AGENT = "KGU-Reserve-Library-Agent/0.1 (+https://library-kiosk.kimkisoo0505.workers.dev)"
 ROOM_FIELDS = ("code", "name", "cnt", "available", "inUse", "fix", "unavailable", "disabled", "startTm", "endTm")
 MAX_ROOMS = 50
+OFFLINE_RETRY_SECONDS = 5.0   # 클라우드 미연결로 건너뛴 경우 (예: 재시작 직후) 다시 확인하는 간격
 
 
 class RelayCloud(Protocol):
@@ -103,10 +104,11 @@ class LibraryStatusRelay:
                 payload["campuses"].append({"id": campus_id, "data": result})
         return payload
 
-    async def run_once(self, client: Any) -> bool:
+    async def run_once(self, client: Any) -> bool | None:
+        """True = 성공, False = 실패, None = 클라우드 오프라인이라 건너뜀"""
         if not self._is_online():
             log_event(self._log, "library_status.skipped_offline", "클라우드 오프라인 - 조회 생략", level=logging.DEBUG)
-            return False
+            return None
         payload = await self.collect(client)
         ok = not payload["errors"]
         if ok != self._last_ok:  # 상태가 바뀔 때만 기록
@@ -128,11 +130,13 @@ class LibraryStatusRelay:
     async def run(self, stop: asyncio.Event) -> None:
         async with self._client_factory() as client:
             while not stop.is_set():
+                result: bool | None = False
                 try:
-                    await self.run_once(client)
+                    result = await self.run_once(client)
                 except Exception:  # noqa: BLE001
                     self._log.exception("중앙/금화도서관 중계 오류")
+                wait = OFFLINE_RETRY_SECONDS if result is None else self._interval
                 try:
-                    await asyncio.wait_for(stop.wait(), timeout=self._interval)
+                    await asyncio.wait_for(stop.wait(), timeout=wait)
                 except TimeoutError:
                     pass

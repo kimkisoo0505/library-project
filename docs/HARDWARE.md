@@ -12,7 +12,7 @@
 
 | 열람실 | 담당 장치 | LCD | 상태 |
 |---|---|---|---|
-| **A** | **라즈베리파이** (서버 역할 겸임), 쉴드 I2C 1번 | I2C 16x2 (PCF8574 백팩, 주소 0x3E) | 구현됨 |
+| **A** | **라즈베리파이** (서버 역할 겸임), 쉴드 I2C 1번 | Seeed Grove LCD RGB Backlight v4 (16x2, 텍스트 0x3E / 백라이트 0x62) | 구현됨 |
 | B | 아두이노 1 | (예정) | 아두이노 구현은 별도 요청 시 |
 | C | 아두이노 2 | (예정) | 아두이노 구현은 별도 요청 시 |
 
@@ -26,8 +26,11 @@
 - 착석 알림은 서버 실시간 알림(`seats.changed`, reason `reservation.checked_in`)으로 받는다. 알림에는 좌석 번호만 있고 개인정보는 없다.
 - LCD 오류는 다른 기능에 영향을 주지 않으며 30초 간격으로 재연결한다.
 - I2C 활성화: `sudo raspi-config nonint do_i2c 0` (적용 완료). 주소 확인: `/usr/sbin/i2cdetect -y 1`
-  - 스캔 결과: 0x3E(LCD), 0x62, 0x70 (쉴드의 다른 장치로 추정, 사용하지 않음)
-- 설정: `raspberry-pi/.env` 의 `DEVICE_ROOM=A`, `LCD_ENABLED=true`, `LCD_I2C_ADDRESS=0x3E`
+  - 스캔 결과: 0x3E(텍스트 컨트롤러), 0x62(RGB 백라이트 PCA9632), 0x70(PCA9632 전체 호출 주소) → Grove LCD RGB Backlight **v4**
+  - v5 모듈은 백라이트 주소가 0x30 이므로 `LCD_RGB_ADDRESS` 를 바꿔야 한다
+- 백라이트: 평상시 녹색, `Offline` 일 때 빨간색 (`LCD_COLOR_NORMAL`, `LCD_COLOR_OFFLINE`)
+- 설정: `raspberry-pi/.env` 의 `DEVICE_ROOM=A`, `LCD_ENABLED=true`, `LCD_TYPE=grove-rgb`, `LCD_I2C_ADDRESS=0x3E`, `LCD_RGB_ADDRESS=0x62`
+- 일반 I2C 백팩 LCD(PCF8574, 보통 0x27/0x3F)를 쓰는 열람실은 `LCD_TYPE=pcf8574`
 
 ## 2. 연결
 

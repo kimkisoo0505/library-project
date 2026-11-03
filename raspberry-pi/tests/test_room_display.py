@@ -73,8 +73,10 @@ class RoomDisplayTests(unittest.TestCase):
         self.assertEqual(self.display.frame().line1, WELCOME_TEXT)
 
     def test_offline_hides_counts(self) -> None:
+        self.assertFalse(self.display.frame().offline)
         self.seats.mark_cloud_offline()
         self.assertEqual(self.display.frame().line2, "Offline")
+        self.assertTrue(self.display.frame().offline, "백라이트를 Offline 색으로")
 
     def test_stale_snapshot_hides_counts(self) -> None:
         self.clock.now += 10_000

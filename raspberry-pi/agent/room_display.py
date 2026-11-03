@@ -23,6 +23,7 @@ WELCOME_TEXT = "Welcome"
 class Frame:
     line1: str
     line2: str
+    offline: bool = False   # 백라이트 색상 결정용 (RGB 지원 LCD)
 
 
 class RoomDisplay:
@@ -78,7 +79,8 @@ class RoomDisplay:
         return self._welcome_started is not None
 
     def frame(self) -> Frame:
-        return Frame(self._line1(self._clock()), self._line2())
+        line2 = self._line2()
+        return Frame(self._line1(self._clock()), line2, offline=not self._seats.can_forward_requests())
 
     def next_tick(self, idle_interval: float = 0.5) -> float:
         """다음 화면 확인까지 기다릴 시간 (애니메이션 중에는 짧게)."""

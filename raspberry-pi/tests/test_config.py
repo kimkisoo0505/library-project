@@ -68,6 +68,8 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(config.device_room, "A")
         self.assertFalse(config.lcd_enabled)
         self.assertEqual((config.lcd_i2c_bus, config.lcd_i2c_address), (1, 0x3E))
+        self.assertEqual((config.lcd_type, config.lcd_rgb_address), ("grove-rgb", 0x62))
+        self.assertEqual((config.lcd_color_normal, config.lcd_color_offline), ((0, 255, 0), (255, 0, 0)))
         self.assertEqual((config.lcd_welcome_seconds, config.lcd_erase_step_seconds), (2.0, 0.15))
         self.assertFalse(config.central_library_relay)
         self.assertEqual(config.central_library_interval_seconds, 60.0)
@@ -81,8 +83,12 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(config.central_library_interval_seconds, 90.0)
 
     def test_invalid_room_address_interval_rejected(self) -> None:
+        config = load_config(base_env(LCD_TYPE="PCF8574", LCD_COLOR_NORMAL="10, 20 ,30"))
+        self.assertEqual((config.lcd_type, config.lcd_color_normal), ("pcf8574", (10, 20, 30)))
         for env in ({"DEVICE_ROOM": "AB"}, {"DEVICE_ROOM": "1"}, {"LCD_I2C_ADDRESS": "0x99"},
-                    {"LCD_I2C_ADDRESS": "lcd"}, {"CENTRAL_LIBRARY_INTERVAL_SECONDS": "10"}):
+                    {"LCD_I2C_ADDRESS": "lcd"}, {"CENTRAL_LIBRARY_INTERVAL_SECONDS": "10"},
+                    {"LCD_TYPE": "oled"}, {"LCD_COLOR_NORMAL": "0,255"}, {"LCD_COLOR_OFFLINE": "300,0,0"},
+                    {"LCD_COLOR_NORMAL": "green"}):
             with self.subTest(env=env), self.assertRaises(ConfigError):
                 load_config(base_env(**env))
 

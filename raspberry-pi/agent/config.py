@@ -36,10 +36,14 @@ class AgentConfig:
     servo_enabled: bool = False
     # 이 장치가 담당하는 열람실 (라즈베리파이 = A)
     device_room: str = "A"
-    # 열람실 LCD (I2C 캐릭터 LCD 16x2, PCF8574 백팩 + HD44780)
+    # 열람실 LCD (I2C 16x2). grove-rgb = Seeed Grove LCD RGB Backlight v4, pcf8574 = 일반 I2C 백팩
     lcd_enabled: bool = False
+    lcd_type: str = "grove-rgb"
     lcd_i2c_bus: int = 1
     lcd_i2c_address: int = 0x3E
+    lcd_rgb_address: int = 0x62
+    lcd_color_normal: tuple[int, int, int] = (0, 255, 0)     # 평상시 녹색
+    lcd_color_offline: tuple[int, int, int] = (255, 0, 0)    # Offline 빨간색
     lcd_welcome_seconds: float = 2.0       # Welcome 표시 유지 시간
     lcd_erase_step_seconds: float = 0.15   # 마지막 글자부터 한 글자씩 지우는 간격
     # 경기대 중앙/금화도서관 공석 중계
@@ -61,7 +65,9 @@ class AgentConfig:
             "device_room": self.device_room,
             "lcd_enabled": self.lcd_enabled,
             "lcd_i2c_bus": self.lcd_i2c_bus,
+            "lcd_type": self.lcd_type,
             "lcd_i2c_address": hex(self.lcd_i2c_address),
+            "lcd_rgb_address": hex(self.lcd_rgb_address),
             "central_library_relay": self.central_library_relay,
             "central_library_interval_seconds": self.central_library_interval_seconds,
         }
@@ -113,6 +119,21 @@ def _get_i2c_address(env: Mapping[str, str], key: str, default: int) -> int:
     if not 0x03 <= address <= 0x77:
         raise ConfigError(f"{key} 값이 I2C 주소 범위(0x03~0x77)를 벗어났습니다: {value!r}")
     return address
+
+
+def _get_rgb(env: Mapping[str, str], key: str, default: tuple[int, int, int]) -> tuple[int, int, int]:
+    """'0,255,0' 형식 백라이트 색상."""
+    value = env.get(key)
+    if value is None or value.strip() == "":
+        return default
+    parts = [p.strip() for p in value.split(",")]
+    try:
+        rgb = tuple(int(p) for p in parts)
+    except ValueError as exc:
+        raise ConfigError(f"{key} 는 R,G,B 형식(예: 0,255,0)이어야 합니다: {value!r}") from exc
+    if len(rgb) != 3 or not all(0 <= v <= 255 for v in rgb):
+        raise ConfigError(f"{key} 는 0~255 값 3개(R,G,B)여야 합니다: {value!r}")
+    return rgb  # type: ignore[return-value]
 
 
 def validate_http_url(url: str, key: str) -> str:
@@ -170,6 +191,10 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         # 안전 규칙: 현재 단계에서는 서보 구동 기능을 제공하지 않는다.
         raise ConfigError("SERVO_ENABLED=true 는 현재 단계에서 지원하지 않습니다. 서보 제어는 안전 검토 후 별도 단계에서 추가합니다.")
 
+    lcd_type = _get_str(source, "LCD_TYPE", "grove-rgb").lower()
+    if lcd_type not in ("grove-rgb", "pcf8574"):
+        raise ConfigError(f"LCD_TYPE 은 grove-rgb 또는 pcf8574 여야 합니다: {lcd_type!r}")
+
     device_room = _get_str(source, "DEVICE_ROOM", "A").upper()
     if len(device_room) != 1 or not ("A" <= device_room <= "Z"):
         raise ConfigError(f"DEVICE_ROOM 은 열람실 코드 한 글자(A~Z)여야 합니다: {device_room!r}")
@@ -192,7 +217,11 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         device_room=device_room,
         lcd_enabled=_get_bool(source, "LCD_ENABLED", False),
         lcd_i2c_bus=int(_get_number(source, "LCD_I2C_BUS", 1, minimum=0, maximum=20)),
+        lcd_type=lcd_type,
         lcd_i2c_address=_get_i2c_address(source, "LCD_I2C_ADDRESS", 0x3E),
+        lcd_rgb_address=_get_i2c_address(source, "LCD_RGB_ADDRESS", 0x62),
+        lcd_color_normal=_get_rgb(source, "LCD_COLOR_NORMAL", (0, 255, 0)),
+        lcd_color_offline=_get_rgb(source, "LCD_COLOR_OFFLINE", (255, 0, 0)),
         lcd_welcome_seconds=_get_number(source, "LCD_WELCOME_SECONDS", 2.0, minimum=0.5, maximum=60),
         lcd_erase_step_seconds=_get_number(source, "LCD_ERASE_STEP_SECONDS", 0.15, minimum=0.02, maximum=2),
         central_library_relay=_get_bool(source, "CENTRAL_LIBRARY_RELAY", False),

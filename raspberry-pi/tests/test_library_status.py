@@ -109,7 +109,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         client = FakeClient(self.ok_routes())
         cloud = FakeCloud()
         ok = await LibraryStatusRelay(cloud, is_online=lambda: False).run_once(client)
-        self.assertFalse(ok)
+        self.assertIsNone(ok, "건너뜀은 None (5초 후 재확인)")
         self.assertEqual(client.calls, [], "오프라인이면 학교 서버도 호출하지 않음")
         self.assertEqual(cloud.payloads, [])
 
