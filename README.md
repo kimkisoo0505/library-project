@@ -1,76 +1,223 @@
-# 도서관 좌석 관리 시스템
+# 📚 예비 도서관 좌석 시스템
 
-도서관 열람실 3곳(A·B·C, 각 30석, 총 90석)의 좌석 예약·착석·퇴실을 관리하는 시스템입니다.
-웹 키오스크, Cloudflare 기반 클라우드 백엔드, 현장 라즈베리파이 에이전트, Arduino 컨트롤러로 구성됩니다.
+> **"시험기간, 자리 찾아 삼만리는 이제 그만."**
+> 중앙도서관이 꽉 찼을 때 문을 여는 **임시 도서관(예비 도서관)** 의 좌석을
+> 휴대폰으로 확인하고, 예약하고, 입구에서 "Welcome"을 받는 시스템입니다.
 
-> **운영 중**
-> - 키오스크: https://library-kiosk.kimkisoo0505.workers.dev (관리자: `/#/admin`)
-> - API: https://library-seat-api.kimkisoo0505.workers.dev/api/health
->
-> `main` 브랜치에 push하면 GitHub Actions가 자동 배포합니다. 라즈베리파이·Arduino 연동과 서보모터는 아직 구현 전입니다.
-> 구현 현황은 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)를 참고하세요.
+| 🖥️ 지금 바로 써보기 | 🔧 관리자 화면 | 💓 서버 상태 |
+|---|---|---|
+| [library-kiosk.kimkisoo0505.workers.dev](https://library-kiosk.kimkisoo0505.workers.dev) | [/#/admin](https://library-kiosk.kimkisoo0505.workers.dev/#/admin) | [/api/health](https://library-seat-api.kimkisoo0505.workers.dev/api/health) |
 
-## 구성
+---
+
+## 🤔 왜 만들었나요?
+
+시험기간의 도서관, 다들 아시죠?
+
+- 🏃 중앙도서관은 아침부터 **만석**
+- 🏫 그래서 학교가 강의실을 **임시 열람실**로 열어 주지만… 어디가 비었는지는 직접 가 봐야 압니다
+- 🎒 겨우 찾은 빈자리엔 **가방만 덩그러니** — 주인은 몇 시간째 행방불명 (일명 *유령 좌석*)
+
+이 프로젝트는 그 임시 열람실을 **"가 보지 않아도 아는 곳"** 으로 바꿉니다.
+열람실 **A · B · C** 세 곳, 각 30석, **총 90석**을 관리합니다.
+
+---
+
+## 🎬 학생의 하루로 보는 사용법
+
+**① 자리 확인** — 휴대폰이나 입구 키오스크에서 열람실 탭을 누르면 남은 좌석이 바로 보입니다.
+
+```
+ [ 열람실 A  27/30 ]  [ 열람실 B  30/30 ]  [ 열람실 C  29/30 ]
+   🟩🟩🟧🟩🟩⬜
+   🟩🟩🟩🟩🟩🟩      🟩 비었어요   🟧 예약됨   ⬜ 사용 중   🟪 점검 중
+```
+
+**② 예약** — 로그인하고 마음에 드는 자리를 콕. 이제 **15분 안에** 도착만 하면 됩니다.
+
+**③ 착석** — 자리에 앉아 화면의 **[착석]** 버튼을 누르면, 열람실 입구의 LCD가 반겨 줍니다.
+
+```
+┌────────────────┐        ┌────────────────┐        ┌────────────────┐
+│Welcome         │  2초   │Welco           │  …     │                │
+│Use 4 Free 26   │  ───▶  │Use 4 Free 26   │  ───▶  │Use 4 Free 26   │
+└────────────────┘        └────────────────┘        └────────────────┘
+  🟢 초록 배경              마지막 글자부터 한 글자씩 사라져요 ✨
+```
+> 아래 줄은 그 열람실의 **사용 중 / 빈자리** 수. 인터넷이 끊기면 배경이 🔴 빨간색이 되고 `Offline` 이 뜹니다.
+> (틀린 숫자를 보여주느니 솔직하게 모른다고 말하는 LCD입니다.)
+
+**④ 퇴실** — 공부가 끝나면 **[퇴실]**. 자리는 즉시 다음 사람에게 돌아갑니다.
+
+**⑤ 안 오면?** — 예약해 놓고 15분 안에 착석하지 않으면 **자동 취소**. 유령 좌석은 15분 이상 못 버팁니다. 👻❌
+
+**⑥ 여기가 다 찼다면?** — 화면 아래에 **경기대 중앙도서관(수원)·금화도서관(서울)** 의 남은 좌석도 1분마다 보여줍니다.
+"여기 꽉 찼네 → 중앙도서관 3층에 50자리 있네!" 같은 판단을 바로 할 수 있어요.
+
+---
+
+## 🧩 누가 무슨 일을 하나요?
+
+이 시스템을 작은 회사라고 생각해 보면 이렇습니다.
+
+| 역할 | 실제 장치 | 하는 일 |
+|---|---|---|
+| 🏢 **본부 · 장부 담당** | Cloudflare (클라우드 서버 + 데이터베이스) | 모든 좌석의 **유일한 공식 장부**. 예약 승인은 오직 여기서만 |
+| 🧑‍💼 **열람실 A 현장 매니저** | 라즈베리파이 3 B+ | 입구 LCD 관리, 본부와 실시간 연락, 학교 도서관 소식 배달 |
+| 🧑‍🔧 **열람실 B·C 현장 매니저** | 아두이노 UNO (예정) | B·C 입구 LCD 담당 *(아직 채용 전 🙂)* |
+| 💁 **안내 데스크** | 키오스크 웹 화면 | 학생이 보고 누르는 화면 (휴대폰에서도 열림) |
+
+```
+              ┌──────────────── ☁️ Cloudflare (본부) ────────────────┐
+              │   API 서버  ·  좌석 장부(DB)  ·  실시간 알림 방송실    │
+              └──────▲───────────────────────▲──────────────▲─────────┘
+                     │ "A20 착석했어요!"       │ 화면 요청      │ 학교 도서관 소식
+                     │                         │                │
+           🍓 라즈베리파이 (열람실 A)       📱 학생 휴대폰       │
+            ├─ 📟 입구 LCD "Welcome"         🖥️ 키오스크        │
+            └─ 🏫 경기대 도서관 서버에서 공석 정보 받아오기 ──────┘
+```
+
+---
+
+## 💡 숨은 똑똑한 포인트들
+
+**🥊 같은 자리를 동시에 눌러도 딱 한 명만**
+두 사람이 0.001초 차이로 같은 자리를 눌러도, 장부(DB)가 심판처럼 **한 명만** 통과시킵니다. 실제로 동시에 요청을 보내는 시험으로 확인했어요.
+
+**🙅 한 사람 한 자리**
+열람실 A에 앉아 있으면 B·C에는 예약할 수 없습니다. 자리 맡아두기 금지!
+
+**🔐 개인정보는 최소한으로**
+실시간 알림에는 "몇 번 자리가 바뀌었다"는 정보만 담깁니다. 누가 앉았는지는 본인과 관리자만 알 수 있어요.
+테스트에는 `TEST-0001` 같은 **가짜 계정만** 사용합니다.
+
+**🕵️ 학교 서버의 작은 실수를 라즈베리파이가 메워 준 이야기**
+경기대 도서관 서버는 보안 인증서의 "중간 연결고리"를 빠뜨리고 보내서, 클라우드 서버가 접속을 거부했습니다 (오류 526).
+그래서 라즈베리파이가 **빠진 고리(공개 인증서)를 직접 챙겨서**, 보안 검사는 그대로 켠 채 정보를 받아 클라우드로 전달합니다.
+
+**📶 와이파이가 없으면 알아서 핫스팟으로**
+집 와이파이가 안 보이면 라즈베리파이가 **등록된 휴대폰 핫스팟에 스스로 연결**합니다 (실험 결과 약 9초).
+학교에서 시연할 때 전원만 꽂으면 끝!
+
+**🧯 고장 나도 엉뚱한 일은 안 한다**
+- 인터넷이 끊기면 → 새 예약을 받지 않고, LCD는 빨간 `Offline`
+- 아두이노 연결이 끊겨도 → 좌석 상태는 절대 멋대로 바뀌지 않음
+- 서보모터(문 개폐 등)는 → 안전 검토 전까지 **코드 수준에서 잠가 둠** 🔒
+
+---
+
+## 🚦 지금 어디까지 왔나요?
+
+| 기능 | 상태 |
+|---|---|
+| 열람실 A·B·C (각 30석) 좌석 현황 · 예약 · 착석 · 퇴실 · 자동 취소 | ✅ 운영 중 |
+| 학생 / 관리자 로그인 분리, 관리자 화면 (점검 전환 · 강제 해제 · 이벤트 기록) | ✅ |
+| 실시간 갱신 (누가 예약하면 모든 화면에 바로 반영) | ✅ |
+| 경기대 중앙·금화도서관 공석 표시 | ✅ |
+| 열람실 A 입구 LCD (Welcome 애니메이션, 사용중/빈자리, 상태 색상) | ✅ |
+| 휴대폰 핫스팟 자동 연결 (시연용) | ✅ |
+| 코드를 올리면 서버에 자동 배포 | ✅ |
+| 열람실 B·C 아두이노 LCD | 🚧 예정 |
+| 현장 버튼 · 서보모터 | 🚧 안전 검토 후 |
+
+> 시연 기간에는 화면에 **테스트 계정 안내**와 **시스템 상태 표시줄**(장치 연결 여부, 와이파이 이름 등)이 임시로 보입니다.
+
+---
+
+## 🙋 자주 묻는 질문
+
+**Q. 진짜 학생 정보가 들어 있나요?**
+아니요. 지금 있는 계정은 전부 시험용 가짜 계정입니다.
+
+**Q. 학번이랑 이름만 알면 남의 계정으로 로그인할 수 있나요?**
+아니요. 비밀번호가 반드시 필요하고, 비밀번호는 서버에도 원문이 아닌 암호화된 형태로만 저장됩니다.
+
+**Q. 남의 예약을 취소하거나 대신 퇴실시킬 수 있나요?**
+아니요. 본인 예약만 바꿀 수 있습니다. (이것도 시험으로 확인했어요.)
+
+**Q. 학교 도서관 서버에 부담을 주지 않나요?**
+이용자가 몇 명이든 학교 서버에는 **1분에 한 번**만 물어보고, 그 결과를 모두에게 나눠 줍니다.
+
+**Q. 서버가 멈추면 어떻게 되나요?**
+Cloudflare가 데이터베이스의 최근 7일 상태를 자동으로 보관해 두어서(Time Travel) 원하는 시각으로 되돌릴 수 있고,
+시스템 전체를 특정 시점 그대로 다시 만드는 [백업·복구 설명서](docs/BACKUP_RESTORE.md)도 있습니다.
+
+---
+---
+
+## 🛠️ 개발자를 위한 정보
+
+### 기술 구성
 
 | 구성요소 | 위치 | 기술 |
 |---|---|---|
-| 웹 키오스크 / 관리자 화면 | [web/kiosk](web/kiosk) | Vite, Vanilla JS → Cloudflare Pages |
-| API 서버 | [cloudflare/workers](cloudflare/workers) | Cloudflare Workers |
-| 데이터베이스 | [cloudflare/database](cloudflare/database) | Cloudflare D1 (SQLite) |
-| 실시간 동기화 | [cloudflare/workers/durable-objects](cloudflare/workers/durable-objects) | Durable Objects + WebSocket |
-| 현장 에이전트 | [raspberry-pi](raspberry-pi) | Python 3.13, Raspberry Pi 3 B+ |
-| 하드웨어 컨트롤러 | [arduino](arduino) | Arduino UNO R3 (버튼, 서보모터 예정) |
+| 키오스크 / 관리자 화면 | [web/kiosk](web/kiosk) | Vite + Vanilla JS → Cloudflare Workers Static Assets (`library-kiosk`) |
+| API 서버 | [cloudflare/workers](cloudflare/workers) | Cloudflare Workers (`library-seat-api`) |
+| 데이터베이스 | [cloudflare/database](cloudflare/database) | Cloudflare D1 (SQLite), 마이그레이션 0001~0004 |
+| 실시간 동기화 | [cloudflare/workers/durable-objects](cloudflare/workers/durable-objects) | Durable Objects + WebSocket Hibernation |
+| 현장 에이전트 (열람실 A) | [raspberry-pi](raspberry-pi) | Python 3.13 (asyncio, httpx, websockets, smbus2), Raspberry Pi 3 B+, Grove LCD RGB Backlight |
+| 하드웨어 컨트롤러 (B·C 예정) | [arduino](arduino) | Arduino UNO R3 — 현재 통신 골격만 |
+| 자동 배포 | [.github/workflows](.github/workflows) | GitHub Actions (검사 → D1 마이그레이션 → 배포) |
 
-**좌석 상태의 최종 기준은 클라우드 D1 데이터베이스**입니다. 라즈베리파이와 키오스크는 상태를 캐시로만 보유하며,
-예약 승인은 오직 서버가 원자적으로 처리합니다.
+**좌석 상태의 최종 기준은 D1** 입니다. 예약은 부분 UNIQUE 인덱스 + 조건부 `INSERT … SELECT … WHERE` 로 원자적으로 처리하며,
+라즈베리파이와 브라우저는 캐시만 가집니다.
 
-## 빠른 시작 (개발 PC, Windows 11)
+### 빠른 시작 (Windows 11)
 
-### 0. 환경 점검
 ```powershell
+# 0. 환경 점검
 powershell -ExecutionPolicy Bypass -File scripts\check_environment.ps1
-```
 
-### 1. 웹 키오스크
-```powershell
+# 1. API 서버 (로컬)
+cd cloudflare
+npm install
+copy wrangler.toml.example wrangler.toml     # 커밋 금지
+npm run migrate:local
+npm run dev                                   # http://127.0.0.1:8787
+npm test                                      # 단위 테스트
+python tests\check_schema.py                  # 스키마/마이그레이션 검사
+
+# 2. 키오스크 (로컬, /api 는 위 서버로 프록시)
 cd web\kiosk
 npm install
-npm run dev        # http://localhost:5173
-```
+npm run dev                                   # http://localhost:5173
 
-### 2. Cloudflare Workers (로컬 실행)
-```powershell
-cd cloudflare
-copy wrangler.toml.example wrangler.toml   # database_id 등 실제 값으로 수정 (커밋 금지)
-npx wrangler d1 migrations apply library-seat-db --local
-npx wrangler dev                            # http://127.0.0.1:8787
-```
-자세한 내용: [cloudflare/README.md](cloudflare/README.md)
-
-### 3. 라즈베리파이 에이전트 (PC에서 테스트만)
-```powershell
+# 3. 라즈베리파이 에이전트 테스트 (하드웨어 없이)
 cd raspberry-pi
 python -m unittest discover -s tests -t . -v
 ```
-실제 설치 방법: [raspberry-pi/README.md](raspberry-pi/README.md)
 
-### 4. Arduino
-Arduino IDE 또는 `arduino-cli`로 [library_controller.ino](arduino/firmware/library_controller/library_controller.ino)를 업로드합니다.
-통신 규격: [SERIAL_PROTOCOL.md](arduino/protocol/SERIAL_PROTOCOL.md)
+계정 만들기: `cd cloudflare; node scripts/accounts.mjs create-student TEST-0004 테스트학생4` ([cloudflare/README.md](cloudflare/README.md))
 
-## 문서
+### 배포
 
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — 시스템 구성 및 통신 흐름
-- [DEVELOPMENT.md](docs/DEVELOPMENT.md) — 단계별 개발/테스트 절차
-- [API_SPEC.md](docs/API_SPEC.md) — REST/WebSocket API 명세
-- [DATABASE.md](docs/DATABASE.md) — D1 스키마 설명
-- [HARDWARE.md](docs/HARDWARE.md) — 라즈베리파이·Arduino 연결 설계
-- [BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) — 백업 · 롤백 · 재구축 (Cloudflare 설정, 라즈베리파이 설정 명령 전체)
-- [CLAUDE.md](CLAUDE.md) — 개발 규칙 (AI 도우미 및 개발자 공통)
+`main` 브랜치에 push 하면 자동 배포됩니다.
+- `cloudflare/**` 변경 → **Deploy Worker** (검사 → 원격 D1 마이그레이션 → API 배포)
+- `web/kiosk/**` 변경 → **Deploy Kiosk** (빌드 → 확인 → 키오스크 배포)
+- 라즈베리파이는 자동 업데이트되지 않습니다: SSH 접속 후 `git pull` → `sudo systemctl restart library-agent`
 
-## 보안 원칙 요약
+### 문서
 
-- 비밀번호·토큰·Cloudflare 키는 코드/저장소에 기록하지 않습니다 (`.env`, `wrangler secret` 사용).
-- 학생 인증과 관리자 권한은 별도 테이블·별도 로그인으로 분리합니다.
-- 실제 학생 개인정보를 테스트 데이터로 사용하지 않습니다.
+| 문서 | 내용 |
+|---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 구성, 통신 흐름, 장애 시나리오 |
+| [API_SPEC.md](docs/API_SPEC.md) | REST / WebSocket API 명세 |
+| [DATABASE.md](docs/DATABASE.md) | D1 스키마, 중복 예약 방지, 마이그레이션 주의점 |
+| [HARDWARE.md](docs/HARDWARE.md) | 열람실별 장치, LCD, I2C, 전원·네트워크 |
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | 단계별 개발 · 테스트 절차 |
+| [BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) | 백업 · 롤백 · 처음부터 재구축 (Cloudflare 설정, 라즈베리파이 명령 전체) |
+| [SERIAL_PROTOCOL.md](arduino/protocol/SERIAL_PROTOCOL.md) | 라즈베리파이 ↔ 아두이노 통신 규격 |
+| [CLAUDE.md](CLAUDE.md) | 개발 규칙 (사람 · AI 도우미 공통) |
+
+### 보안 원칙
+
+- 비밀번호 · 토큰 · Cloudflare 키는 저장소에 기록하지 않습니다 (`.env`, `wrangler secret`, GitHub Secrets).
+  *(예외: 시연용 가짜 테스트 계정 안내 — 운영 전 끄고 비밀번호 재설정)*
+- 학생 인증과 관리자 권한은 별도 테이블 · 별도 로그인 · 별도 세션 종류로 분리합니다.
 - 라즈베리파이는 클라우드로 **외부 발신 연결만** 사용합니다 (포트포워딩 없음).
+- 외부(학교 서버) 데이터와 장치가 보낸 데이터도 서버에서 다시 검증합니다.
+
+---
+
+<sub>만든 사람: [@kimkisoo0505](https://github.com/kimkisoo0505) · 개발 도구: VS Code + Claude Code · 시험기간에 지친 모든 학생들을 위해 ☕</sub>
