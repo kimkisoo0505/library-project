@@ -91,6 +91,24 @@ h2 { font-size: 1.15rem; }
 .form-error { color: var(--danger); min-height: 1.2em; margin: 0; font-size: 0.9rem; }
 .hint { color: var(--muted); font-size: 0.9rem; }
 
+.test-accounts {
+  margin-top: 16px; padding: 12px;
+  border: 1px dashed var(--reserved); border-radius: var(--radius); background: #fffbeb;
+}
+.test-accounts h3 { margin: 0 0 4px; font-size: 0.95rem; color: #92400e; }
+.test-accounts .hint { margin: 0 0 8px; font-size: 0.8rem; }
+.test-account-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.test-account {
+  width: 100%; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px;
+  padding: 8px 10px; font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+}
+.test-account:hover { border-color: var(--reserved); }
+.test-account:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.test-account-id { font-weight: 700; }
+.test-account-name { color: var(--muted); }
+.test-account-pw { font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; }
+
 .my-seat, .selected-seat { display: flex; flex-direction: column; gap: 10px; }
 
 .btn {

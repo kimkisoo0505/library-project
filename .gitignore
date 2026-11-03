@@ -4,6 +4,7 @@
 !.env.example
 # 키오스크 운영 빌드용 공개 API 주소 (비밀 아님)
 !web/kiosk/.env.production
+!web/kiosk/.env.development
 *.pem
 *.key
 .dev.vars

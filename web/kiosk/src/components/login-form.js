@@ -48,6 +48,13 @@ export function createLoginForm({ title, idLabel, idName, idAutocomplete = 'user
   return {
     element: form,
     focus: () => idField.input.focus(),
+    /** 테스트 계정 안내 등에서 값을 채워 넣는다 (제출은 사용자가 직접) */
+    fill: (id, password) => {
+      idField.input.value = id;
+      pwField.input.value = password;
+      error.textContent = '';
+      submit.focus();
+    },
     reset: () => { form.reset(); error.textContent = ''; },
   };
 }

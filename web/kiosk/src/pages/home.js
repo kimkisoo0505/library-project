@@ -4,6 +4,7 @@ import { createLoginForm } from '../components/login-form.js';
 import { createSeatMap } from '../components/seat-map.js';
 import { STATE_LABELS } from '../components/seat-card.js';
 import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
+import { TEST_STUDENTS } from '../test-accounts.js';
 
 const ROOM_PREF_KEY = 'library.kiosk.room';
 
@@ -83,6 +84,38 @@ export function renderHome(root) {
       await loadSeats();
     },
   });
+
+  // ----- 테스트 계정 안내 (VITE_SHOW_TEST_ACCOUNTS=true 일 때만) -----
+  const testAccountsBox = TEST_STUDENTS.length ? buildTestAccountsBox() : null;
+
+  function buildTestAccountsBox() {
+    const box = el('section', 'test-accounts');
+    box.setAttribute('aria-label', '테스트 계정 안내');
+    box.append(
+      el('h3', null, '테스트 계정'),
+      el('p', 'hint', '시험용 가짜 계정입니다. 누르면 로그인 정보가 입력됩니다.'),
+    );
+    const list = el('ul', 'test-account-list');
+    for (const account of TEST_STUDENTS) {
+      const button = el('button', 'test-account');
+      button.type = 'button';
+      button.append(
+        el('span', 'test-account-id', account.studentNo),
+        el('span', 'test-account-name', account.name),
+        el('code', 'test-account-pw', account.password),
+      );
+      button.setAttribute('aria-label', `${account.name} (${account.studentNo}) 로그인 정보 입력`);
+      button.addEventListener('click', () => {
+        loginForm.fill(account.studentNo, account.password);
+        showMessage(`${account.name} 계정 정보를 입력했습니다. 로그인 버튼을 누르세요.`, 'info');
+      });
+      const item = el('li');
+      item.append(button);
+      list.append(item);
+    }
+    box.append(list);
+    return box;
+  }
 
   // ----- 동작 -----
   function showMessage(text, kind = 'info') {
@@ -192,6 +225,7 @@ export function renderHome(root) {
 
     if (!state.user) {
       panel.append(loginForm.element, el('p', 'hint', '좌석 현황은 로그인 없이 볼 수 있습니다. 예약하려면 로그인하세요.'));
+      if (testAccountsBox) panel.append(testAccountsBox);
       return;
     }
 
