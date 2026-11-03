@@ -71,6 +71,11 @@ class LibraryStatusRelay:
         self._log = get_logger("library_status")
         self._last_ok: bool | None = None
 
+    @property
+    def last_ok(self) -> bool | None:
+        """마지막 조회 결과 (None = 아직 조회 전)"""
+        return self._last_ok
+
     @staticmethod
     def _default_client() -> Any:
         import httpx

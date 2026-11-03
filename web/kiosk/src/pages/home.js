@@ -6,6 +6,9 @@ import { STATE_LABELS } from '../components/seat-card.js';
 import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
 import { TEST_STUDENTS } from '../test-accounts.js';
 import { createCentralLibraryPanel } from '../components/central-library.js';
+import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from '../components/system-status.js';
+
+const SYSTEM_STATUS_POLL_MS = 15_000;
 
 const CENTRAL_LIBRARY_POLL_MS = 60_000;
 
@@ -74,7 +77,18 @@ export function renderHome(root) {
 
   const centralLibrary = createCentralLibraryPanel();
 
-  root.append(header, message, main, centralLibrary.element, footer);
+  const systemStatus = SHOW_SYSTEM_STATUS ? createSystemStatusBar() : null;
+
+  root.append(header, message, main, centralLibrary.element, ...(systemStatus ? [systemStatus.element] : []), footer);
+
+  async function loadSystemStatus() {
+    if (!systemStatus) return;
+    try {
+      systemStatus.update(await api.systemStatus());
+    } catch {
+      systemStatus.showError();
+    }
+  }
 
   // 중앙/금화도서관 공석 (예약 기능과 독립: 실패해도 다른 화면에 영향 없음)
   async function loadCentralLibrary() {
@@ -311,6 +325,8 @@ export function renderHome(root) {
   const pollTimer = setInterval(() => { if (!state.live) loadSeats(); }, FALLBACK_POLL_MS);
   loadCentralLibrary();
   const centralTimer = setInterval(() => { if (!document.hidden) loadCentralLibrary(); }, CENTRAL_LIBRARY_POLL_MS);
+  loadSystemStatus();
+  const statusTimer = systemStatus ? setInterval(() => { if (!document.hidden) loadSystemStatus(); }, SYSTEM_STATUS_POLL_MS) : null;
 
   restoreUser().then(() => { resetIdleTimer(); return loadSeats(); });
 
@@ -318,6 +334,7 @@ export function renderHome(root) {
     socket.close();
     clearInterval(pollTimer);
     clearInterval(centralTimer);
+    if (statusTimer) clearInterval(statusTimer);
     clearTimeout(idleTimer);
     activityEvents.forEach((name) => document.removeEventListener(name, resetIdleTimer));
   };

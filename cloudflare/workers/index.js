@@ -19,6 +19,7 @@ import {
 } from './reservations.js';
 
 import { handleCentralLibrary, handleDeviceCentralLibrary } from './central-library.js';
+import { handleDeviceStatus, handleSystemStatus } from './system-status.js';
 
 export { SeatRoom } from './durable-objects/seat-room.js';
 
@@ -53,6 +54,10 @@ const router = new Router()
   // 라즈베리파이 장치
   .post('/api/device/events', handleDeviceEvent)
   .post('/api/device/central-library', handleDeviceCentralLibrary)
+  .post('/api/device/status', handleDeviceStatus)
+
+  // 현장 장치 / 외부 연동 상태 (키오스크 임시 상태 표시줄)
+  .get('/api/system-status', handleSystemStatus)
 
   // 실시간
   .get('/api/ws', handleWebSocket);

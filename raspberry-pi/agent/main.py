@@ -16,6 +16,7 @@ from pathlib import Path
 from . import __version__
 from .cloud_client import CloudClient, CloudRequestRejected, CloudUnavailableError
 from .config import AgentConfig, ConfigError, load_config, load_dotenv_file
+from .device_status import DeviceStatusReporter
 from .event_handler import EventHandler
 from .lcd_display import create_lcd
 from .library_status import LibraryStatusRelay
@@ -125,6 +126,8 @@ async def run_agent(config: AgentConfig) -> None:
             asyncio.create_task(_heartbeat(serial, config.heartbeat_seconds, stop), name="heartbeat"),
             asyncio.create_task(_periodic_sync(handler, seats, config.seat_sync_seconds, stop), name="sync"),
         ]
+        lcd = None
+        relay = None
         if config.lcd_enabled:
             lcd = create_lcd(config.lcd_type, config.lcd_i2c_bus, config.lcd_i2c_address, config.lcd_rgb_address)
             colors = (config.lcd_color_normal, config.lcd_color_offline)
@@ -136,6 +139,18 @@ async def run_agent(config: AgentConfig) -> None:
                 is_online=lambda: seats.cloud_online,
             )
             tasks.append(asyncio.create_task(relay.run(stop), name="central-library"))
+
+        def components() -> dict:
+            return {
+                "lcd": None if lcd is None else lcd.is_open,               # None = 사용 안 함
+                "serial": serial.connected,                                 # Arduino USB 연결
+                "central_library": None if relay is None else relay.last_ok,
+            }
+
+        reporter = DeviceStatusReporter(
+            cloud, room=config.device_room, is_online=lambda: seats.cloud_online, components=components
+        )
+        tasks.append(asyncio.create_task(reporter.run(stop), name="device-status"))
 
         def _on_task_done(task: asyncio.Task[None]) -> None:
             if task.cancelled():

@@ -148,6 +148,25 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 응답 `202 { "accepted": true, "received": 1, "errors": 1 }`, 본문 최대 64KB.
 `CENTRAL_LIBRARY_MODE=relay`(기본)이면 `GET /central-library` 는 학교 서버를 직접 호출하지 않습니다.
 
+### `POST /device/status` — 장치 상태 보고 (장치 토큰, 30초마다)
+```json
+{ "room": "A", "agent_version": "0.1.0",
+  "network": { "type": "wifi", "ssid": "AndroidHotspot4912", "signal": 80, "band": "2.4GHz" },
+  "lcd": true, "serial": false, "central_library": true }
+```
+허용 필드만 정규화해 `device_status` 에 장치별 최신 1행으로 저장 (IP/MAC 저장 안 함). 응답 `202`.
+
+### `GET /system-status` — 키오스크 임시 상태 표시줄 (공개)
+```json
+{ "devices": [
+    { "room": "A", "kind": "raspberry-pi", "label": "라즈베리파이 (열람실 A)", "online": true, "last_seen_at": "...",
+      "network": { "type": "wifi", "ssid": "...", "signal": 60, "band": "5GHz" }, "lcd": true, "serial": false },
+    { "room": "B", "kind": "arduino", "label": "아두이노 (열람실 B)", "online": false, "last_seen_at": null },
+    { "room": "C", "kind": "arduino", "label": "아두이노 (열람실 C)", "online": false, "last_seen_at": null } ],
+  "central_library": { "ok": true, "fetched_at": "...", "degraded": false } }
+```
+`online` = 마지막 보고 90초 이내. `central_library.ok` = 3분 이내 정상 수신.
+
 ## 7. WebSocket
 
 ### `GET /ws` (Upgrade: websocket)

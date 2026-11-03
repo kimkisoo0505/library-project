@@ -109,6 +109,15 @@ CREATE TABLE IF NOT EXISTS external_snapshots (
     last_error      TEXT
 );
 
+-- 현장 장치 최근 상태 (0004_device_status)
+CREATE TABLE IF NOT EXISTS device_status (
+    device_id       TEXT    PRIMARY KEY,
+    room            TEXT    NOT NULL,
+    last_seen_at    TEXT    NOT NULL,
+    payload         TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_device_status_room ON device_status (room);
+
 -- 열람실 / 좌석 기본 데이터 (개인정보 아님): 3실 x 30석
 INSERT OR IGNORE INTO rooms (id, code, name, sort_order) VALUES
     (1, 'A', '열람실 A', 1),

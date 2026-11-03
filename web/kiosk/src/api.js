@@ -89,6 +89,7 @@ export const api = {
 
   listSeats: () => request('/seats', { auth: session.get('student') ? 'student' : null }),
   centralLibrary: () => request('/central-library'),
+  systemStatus: () => request('/system-status'),
   myReservation: () => request('/reservations/me', { auth: 'student' }),
   createReservation: (seatId) => request('/reservations', { method: 'POST', auth: 'student', body: { seat_id: seatId } }),
   cancelReservation: (id) => request(`/reservations/${encodeURIComponent(id)}`, { method: 'DELETE', auth: 'student' }),

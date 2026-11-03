@@ -166,3 +166,22 @@ h2 { font-size: 1.15rem; }
 .event-list time { color: var(--muted); }
 .event-type { font-family: ui-monospace, Consolas, monospace; }
 .event-meta { color: var(--muted); }
+
+/* ----- 임시 시스템 상태 표시줄 (VITE_SHOW_SYSTEM_STATUS) ----- */
+.system-status {
+  margin-top: 16px; padding: 12px 16px;
+  border: 1px dashed var(--muted); border-radius: var(--radius); background: var(--surface);
+}
+.system-status h2 { font-size: 0.95rem; margin: 0 0 8px; color: var(--muted); }
+.ss-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ss-item { display: grid; grid-template-columns: 12px auto 1fr; align-items: center; gap: 8px; font-size: 0.85rem; }
+.ss-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.ss-item.is-ok .ss-dot { background: var(--available); }
+.ss-item.is-bad .ss-dot { background: var(--danger); }
+.ss-label { font-weight: 700; white-space: nowrap; }
+.ss-detail { color: var(--muted); overflow-wrap: anywhere; }
+.ss-meta { margin: 8px 0 0; font-size: 0.75rem; }
+@media (max-width: 520px) {
+  .ss-item { grid-template-columns: 12px 1fr; }
+  .ss-detail { grid-column: 2; }
+}
