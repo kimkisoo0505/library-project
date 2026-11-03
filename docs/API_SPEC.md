@@ -138,6 +138,16 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 `type`: `agent_started | heartbeat | serial_connected | serial_disconnected | serial_hello | protocol_error | button`
 응답 `202 { "accepted": true, "action": "logged_only" }` — 현재는 기록만 하며 좌석 상태를 바꾸지 않습니다.
 
+### `POST /device/central-library` — 중앙/금화도서관 공석 중계 (장치 토큰)
+라즈베리파이가 1분마다 libgate 를 **인증서 검증을 켠 채로** 조회해 원본을 올립니다.
+서버는 장치 입력도 다시 검증·정규화합니다 (모르는 캠퍼스·중복·형식 오류 무시, 실패한 캠퍼스는 이전 결과 유지).
+```json
+{ "campuses": [ { "id": 1, "data": [ { "code": 8, "name": "...", "cnt": 50, "available": 12, "inUse": 38, "fix": 0, "startTm": "0600", "endTm": "2400" } ] } ],
+  "errors": ["금화도서관: ConnectError: ..."] }
+```
+응답 `202 { "accepted": true, "received": 1, "errors": 1 }`, 본문 최대 64KB.
+`CENTRAL_LIBRARY_MODE=relay`(기본)이면 `GET /central-library` 는 학교 서버를 직접 호출하지 않습니다.
+
 ## 7. WebSocket
 
 ### `GET /ws` (Upgrade: websocket)

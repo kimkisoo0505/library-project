@@ -28,16 +28,27 @@ class SerialPortManager(Protocol):
     async def send(self, kind: str, *fields: str) -> bool: ...
 
 
+class WelcomeDisplay(Protocol):
+    room: str
+
+    def show_welcome(self) -> None: ...
+
+
+CHECK_IN_REASON = "reservation.checked_in"
+
+
 class EventHandler:
     def __init__(self, seats: SeatManager) -> None:
         self._seats = seats
         self._cloud: CloudPort | None = None
         self._serial: SerialPortManager | None = None
+        self._display: WelcomeDisplay | None = None
         self._log = get_logger("events")
 
-    def attach(self, *, cloud: CloudPort, serial: SerialPortManager) -> None:
+    def attach(self, *, cloud: CloudPort, serial: SerialPortManager, display: WelcomeDisplay | None = None) -> None:
         self._cloud = cloud
         self._serial = serial
+        self._display = display
 
     # ----- Arduino -> 에이전트 -----
 
@@ -100,6 +111,7 @@ class EventHandler:
     async def on_cloud_message(self, message: dict[str, Any]) -> None:
         match message.get("type"):
             case "seats.changed":
+                self._maybe_welcome(message)
                 await self.refresh_seats()
             case "hello":
                 log_event(self._log, "cloud.hello", "클라우드 세션 시작", role=message.get("role"))
@@ -122,6 +134,19 @@ class EventHandler:
             return False
 
     # ----- 내부 -----
+
+    def _maybe_welcome(self, message: dict[str, Any]) -> None:
+        """이 장치 담당 열람실 좌석의 착석 알림이면 LCD 에 Welcome 표시."""
+        if self._display is None or message.get("reason") != CHECK_IN_REASON:
+            return
+        try:
+            seat = self._seats.get(int(message.get("seat_id")))
+        except (TypeError, ValueError, KeyError):
+            return
+        if seat.room != self._display.room:
+            return
+        self._display.show_welcome()
+        log_event(self._log, "lcd.welcome", "착석 확인 - Welcome 표시", room=seat.room, seat=seat.label)
 
     async def _send_status(self) -> None:
         if self._serial is None or not self._serial.connected:

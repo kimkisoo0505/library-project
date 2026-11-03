@@ -1,7 +1,7 @@
 // 중앙/금화도서관 연동 단위 테스트 (가짜 응답 사용, 실제 학교 서버 호출 없음)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CAMPUSES, fetchAllCampuses, normalizeCampus, toHours } from '../workers/central-library.js';
+import { CAMPUSES, fetchAllCampuses, ingestDevicePayload, normalizeCampus, toHours } from '../workers/central-library.js';
 
 const SAMPLE = [
   { code: 8, name: '제1열람실', cnt: 200, available: 37, inUse: 150, fix: 10, unavailable: 2, disabled: 1, startTm: '0600', endTm: '2300' },
@@ -89,4 +89,35 @@ test('fetchAllCampuses: HTTP 오류 / API 오류 코드 처리', async () => {
   const { campuses, errors } = await fetchAllCampuses(null, impl);
   assert.equal(campuses.length, 0);
   assert.deepEqual(errors, ['중앙도서관: http_503', '금화도서관: api_error']);
+});
+
+test('ingestDevicePayload: 라즈베리파이 원본을 정규화하고 장치 오류를 기록', () => {
+  const { campuses, errors, received } = ingestDevicePayload(
+    { campuses: [{ id: 1, data: SAMPLE }, { id: 2, data: [SAMPLE[1]] }], errors: [] },
+    null,
+  );
+  assert.equal(received, 2);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(campuses.map((c) => [c.library, c.available, c.total]), [['중앙도서관', 37, 280], ['금화도서관', 0, 80]]);
+});
+
+test('ingestDevicePayload: 장치 입력도 신뢰하지 않음 (모르는 캠퍼스/중복/형식 오류/긴 오류문)', () => {
+  const previous = { campuses: [{ id: 2, library: '금화도서관', total: 5, available: 5, rooms: [], fetched_at: 'old' }] };
+  const { campuses, errors, received } = ingestDevicePayload(
+    {
+      campuses: [{ id: 99, data: SAMPLE }, { id: 1, data: 'not-array' }, { id: 1, data: SAMPLE }],
+      errors: ['금화도서관: ' + 'x'.repeat(500), 1, 2, 3, 4, 5, 6],
+    },
+    previous,
+  );
+  assert.equal(received, 0, '첫 id=1 항목이 형식 오류면 같은 id 의 뒤 항목은 무시 (중복 차단)');
+  assert.ok(errors.includes('중앙도서관: invalid_payload'));
+  assert.ok(errors.every((e) => e.length <= 120));
+  assert.ok(errors.length <= 6);
+  assert.deepEqual(campuses.map((c) => [c.id, c.fetched_at]), [[2, 'old']], '실패한 캠퍼스는 이전 결과 유지');
+});
+
+test('ingestDevicePayload: 빈/잘못된 본문', () => {
+  assert.deepEqual(ingestDevicePayload({}, null), { campuses: [], errors: [], received: 0 });
+  assert.deepEqual(ingestDevicePayload({ campuses: 'x', errors: 'y' }, null), { campuses: [], errors: [], received: 0 });
 });

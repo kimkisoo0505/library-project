@@ -63,6 +63,29 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(config.redacted()["device_token"], "***")
         self.assertEqual(config.log_dir, Path("logs"))
 
+    def test_room_lcd_and_relay_defaults(self) -> None:
+        config = load_config(base_env())
+        self.assertEqual(config.device_room, "A")
+        self.assertFalse(config.lcd_enabled)
+        self.assertEqual((config.lcd_i2c_bus, config.lcd_i2c_address), (1, 0x3E))
+        self.assertEqual((config.lcd_welcome_seconds, config.lcd_erase_step_seconds), (2.0, 0.15))
+        self.assertFalse(config.central_library_relay)
+        self.assertEqual(config.central_library_interval_seconds, 60.0)
+
+    def test_room_lcd_and_relay_overrides(self) -> None:
+        config = load_config(base_env(DEVICE_ROOM="b", LCD_ENABLED="true", LCD_I2C_ADDRESS="0x27",
+                                      CENTRAL_LIBRARY_RELAY="true", CENTRAL_LIBRARY_INTERVAL_SECONDS="90"))
+        self.assertEqual(config.device_room, "B")
+        self.assertTrue(config.lcd_enabled and config.central_library_relay)
+        self.assertEqual(config.lcd_i2c_address, 0x27)
+        self.assertEqual(config.central_library_interval_seconds, 90.0)
+
+    def test_invalid_room_address_interval_rejected(self) -> None:
+        for env in ({"DEVICE_ROOM": "AB"}, {"DEVICE_ROOM": "1"}, {"LCD_I2C_ADDRESS": "0x99"},
+                    {"LCD_I2C_ADDRESS": "lcd"}, {"CENTRAL_LIBRARY_INTERVAL_SECONDS": "10"}):
+            with self.subTest(env=env), self.assertRaises(ConfigError):
+                load_config(base_env(**env))
+
     def test_derive_ws_url_keeps_path_prefix(self) -> None:
         self.assertEqual(derive_ws_url("https://example.invalid/base"), "wss://example.invalid/base/api/ws?role=device")
 

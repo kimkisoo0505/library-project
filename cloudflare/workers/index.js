@@ -18,7 +18,7 @@ import {
   expireStaleReservations,
 } from './reservations.js';
 
-import { handleCentralLibrary } from './central-library.js';
+import { handleCentralLibrary, handleDeviceCentralLibrary } from './central-library.js';
 
 export { SeatRoom } from './durable-objects/seat-room.js';
 
@@ -52,6 +52,7 @@ const router = new Router()
 
   // 라즈베리파이 장치
   .post('/api/device/events', handleDeviceEvent)
+  .post('/api/device/central-library', handleDeviceCentralLibrary)
 
   // 실시간
   .get('/api/ws', handleWebSocket);

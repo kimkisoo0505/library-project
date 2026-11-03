@@ -16,7 +16,11 @@ Arduino ──USB 시리얼──▶ agent ──HTTPS/WSS (외부 발신)──
 | `agent/serial_manager.py` | 시리얼 연결/재연결, 프로토콜 파싱·명령 생성 (SERVO 전송 금지) |
 | `agent/cloud_client.py` | REST(좌석 조회, 장치 이벤트) 및 WebSocket 구독 |
 | `agent/seat_manager.py` | 클라우드 좌석 상태 캐시. 단절 시 상태 유지 + 요청 차단 |
-| `agent/event_handler.py` | 버튼 입력 → 클라우드 전달, 오프라인 시 거부, 상태 알림 |
+| `agent/event_handler.py` | 버튼 입력 → 클라우드 전달, 오프라인 시 거부, 상태 알림, 착석 알림 → Welcome |
+| `agent/room_display.py` | 열람실 LCD 화면 내용 계산 (Welcome 2초 + 지우기 애니메이션, 사용중/공석) |
+| `agent/lcd_display.py` | I2C 16x2 LCD 드라이버 (PCF8574 + HD44780, 바뀐 글자만 다시 씀) |
+| `agent/library_status.py` | 경기대 중앙/금화도서관 공석 중계 (중간 인증서 포함, 검증 유지) |
+| `agent/certs/` | 학교 서버가 빠뜨린 공개 중간 인증서 (RapidSSL TLS RSA CA G1, ~2027-11-02) |
 
 ## 안전 동작
 

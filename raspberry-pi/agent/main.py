@@ -17,9 +17,14 @@ from . import __version__
 from .cloud_client import CloudClient, CloudRequestRejected, CloudUnavailableError
 from .config import AgentConfig, ConfigError, load_config, load_dotenv_file
 from .event_handler import EventHandler
+from .lcd_display import CharacterLcd
+from .library_status import LibraryStatusRelay
 from .logger import get_logger, log_event, setup_logging
+from .room_display import RoomDisplay
 from .seat_manager import SeatManager
 from .serial_manager import SerialManager
+
+LCD_RETRY_SECONDS = 30.0
 
 AGENT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -43,6 +48,38 @@ async def _periodic_sync(handler: EventHandler, seats: SeatManager, interval: fl
             await handler.refresh_seats()
 
 
+async def _lcd_loop(lcd: CharacterLcd, display: RoomDisplay, stop: asyncio.Event) -> None:
+    """화면 내용이 바뀔 때만 LCD 에 쓴다. LCD 오류는 다른 기능에 영향을 주지 않으며 30초 후 재시도."""
+    log = get_logger("lcd")
+    last = None
+    while not stop.is_set():
+        if not lcd.is_open:
+            try:
+                await asyncio.to_thread(lcd.open)
+                last = None
+                log_event(log, "lcd.connected", "LCD 연결", bus=lcd.bus_number, address=hex(lcd.address))
+            except Exception as exc:  # noqa: BLE001
+                log_event(log, "lcd.error", "LCD 연결 실패 - 30초 후 재시도", level=logging.WARNING, error=repr(exc))
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(stop.wait(), timeout=LCD_RETRY_SECONDS)
+                continue
+        frame = display.frame()
+        if frame != last:
+            try:
+                await asyncio.to_thread(lcd.write_lines, (frame.line1, frame.line2))
+                last = frame
+            except Exception as exc:  # noqa: BLE001
+                log_event(log, "lcd.error", "LCD 쓰기 실패 - 재연결", level=logging.WARNING, error=repr(exc))
+                lcd.close()
+                continue
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=display.next_tick())
+    if lcd.is_open:
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(lcd.write_lines, ("", ""))
+        lcd.close()
+
+
 async def run_agent(config: AgentConfig) -> None:
     log = get_logger("main")
     stop = asyncio.Event()
@@ -54,6 +91,12 @@ async def run_agent(config: AgentConfig) -> None:
 
     seats = SeatManager(stale_after_seconds=config.seat_stale_seconds)
     handler = EventHandler(seats)
+    display = RoomDisplay(
+        config.device_room,
+        seats,
+        welcome_seconds=config.lcd_welcome_seconds,
+        erase_step_seconds=config.lcd_erase_step_seconds,
+    )
     serial = SerialManager(
         config.serial_port,
         config.serial_baudrate,
@@ -67,7 +110,7 @@ async def run_agent(config: AgentConfig) -> None:
         on_message=handler.on_cloud_message,
         on_connection_change=handler.on_cloud_connection_change,
     ) as cloud:
-        handler.attach(cloud=cloud, serial=serial)
+        handler.attach(cloud=cloud, serial=serial, display=display if config.lcd_enabled else None)
 
         with contextlib.suppress(CloudUnavailableError, CloudRequestRejected):
             await cloud.post_device_event("agent_started", detail=__version__)
@@ -78,6 +121,16 @@ async def run_agent(config: AgentConfig) -> None:
             asyncio.create_task(_heartbeat(serial, config.heartbeat_seconds, stop), name="heartbeat"),
             asyncio.create_task(_periodic_sync(handler, seats, config.seat_sync_seconds, stop), name="sync"),
         ]
+        if config.lcd_enabled:
+            lcd = CharacterLcd(config.lcd_i2c_bus, config.lcd_i2c_address)
+            tasks.append(asyncio.create_task(_lcd_loop(lcd, display, stop), name="lcd"))
+        if config.central_library_relay:
+            relay = LibraryStatusRelay(
+                cloud,
+                interval_seconds=config.central_library_interval_seconds,
+                is_online=lambda: seats.cloud_online,
+            )
+            tasks.append(asyncio.create_task(relay.run(stop), name="central-library"))
 
         def _on_task_done(task: asyncio.Task[None]) -> None:
             if task.cancelled():

@@ -66,9 +66,14 @@ Arduino ──BTN,1,PRESS──▶ 에이전트
 
 ### 3.6 중앙도서관 · 금화도서관 공석 (외부 연동)
 ```
-키오스크 ──GET /api/central-library──▶ Workers ──(1분에 최대 1회)──▶ libgate.kyonggi.ac.kr
-                                         └ D1 external_snapshots 에 저장, 오래되면 백그라운드 갱신
+라즈베리파이 ──(1분마다, 인증서 검증 ON)──▶ libgate.kyonggi.ac.kr
+     └──POST /api/device/central-library (장치 토큰)──▶ Workers ──▶ D1 external_snapshots
+키오스크 ──GET /api/central-library──▶ Workers (D1 에서 읽기만 함)
 ```
+학교 서버가 중간 인증서(RapidSSL TLS RSA CA G1)를 보내지 않아 Cloudflare Workers 의 직접 조회는
+TLS 검증에 실패한다(HTTP 526). 라즈베리파이는 공개 중간 인증서(`raspberry-pi/agent/certs/`)를 신뢰 목록에
+추가해 **검증을 끄지 않고** 조회한다. 학교 서버가 체인을 고치면 `CENTRAL_LIBRARY_MODE=direct` 로 전환할 수 있다.
+- 중간 인증서 유효기간: 2027-11-02. 학교 서버 인증서 만료: 2026-11-25 (갱신 시 발급 기관이 바뀌면 인증서 교체 필요)
 예약 기능과 독립되어 있어 학교 서버 장애가 예비 도서관 예약에 영향을 주지 않습니다.
 
 ## 4. 장애 시나리오

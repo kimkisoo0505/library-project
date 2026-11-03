@@ -39,6 +39,8 @@ crons = ["* * * * *"]
 ALLOWED_ORIGINS = "https://library-kiosk.kimkisoo0505.workers.dev,http://localhost:5173"
 RESERVATION_HOLD_MINUTES = "15"
 SESSION_TTL_HOURS = "12"
+# 경기대 중앙/금화도서관 공석: relay = 라즈베리파이 중계 (학교 서버 중간 인증서 누락으로 Workers 직접 조회 불가)
+CENTRAL_LIBRARY_MODE = "relay"
 
 # ---- 비밀 값 (값은 여기에 쓰지 않음) ----
 # DEVICE_TOKEN : 라즈베리파이 에이전트 인증 토큰

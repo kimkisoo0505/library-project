@@ -12,7 +12,18 @@
  *
  * 외부 응답은 신뢰하지 않는 입력으로 취급한다: 숫자/짧은 문자열만 추출하고 범위를 제한한다.
  */
-import { json, nowIso, logEvent } from './router.js';
+import { json, nowIso, logEvent, readJson } from './router.js';
+import { requireDevice } from './auth.js';
+
+/**
+ * 조회 방식 (wrangler.toml [vars] CENTRAL_LIBRARY_MODE)
+ *   relay  : 라즈베리파이가 조회해서 올려 준다 (기본). 서버는 학교 서버를 직접 호출하지 않는다.
+ *            학교 서버가 중간 인증서를 보내지 않아 Workers 에서는 TLS 검증이 실패(526)하기 때문.
+ *   direct : 서버가 직접 조회 (학교 서버 인증서 체인이 고쳐지면 사용 가능)
+ */
+function mode(env) {
+  return env.CENTRAL_LIBRARY_MODE === 'direct' ? 'direct' : 'relay';
+}
 
 export const SOURCE = 'kgu-library-status';
 const BASE_URL = 'https://libgate.kyonggi.ac.kr';
@@ -131,6 +142,38 @@ async function claimRefresh(env) {
   return Boolean(row);
 }
 
+/**
+ * 조회 결과를 저장한다 (직접 조회 / 라즈베리파이 중계 공용).
+ * 새로 받은 캠퍼스가 하나라도 있으면 payload 를 갱신하고, 없으면 오류만 기록한다.
+ */
+async function saveSnapshot(env, snapshot, campuses, errors, { source = 'system', actorId = null } = {}) {
+  const lastError = errors.length ? errors.join(' / ').slice(0, 500) : null;
+  const now = nowIso();
+  const anyFresh = campuses.some((c) => c.fetched_at && Date.now() - Date.parse(c.fetched_at) < CLAIM_MS);
+
+  if (anyFresh) {
+    await env.DB.prepare(
+      `INSERT INTO external_snapshots (source, payload, fetched_at, attempted_at, last_error) VALUES (?1, ?2, ?3, ?3, ?4)
+       ON CONFLICT (source) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at,
+                                          attempted_at = excluded.attempted_at, last_error = excluded.last_error`,
+    ).bind(SOURCE, JSON.stringify({ campuses }), now, lastError).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO external_snapshots (source, attempted_at, last_error) VALUES (?1, ?2, ?3)
+       ON CONFLICT (source) DO UPDATE SET attempted_at = excluded.attempted_at, last_error = excluded.last_error`,
+    ).bind(SOURCE, now, lastError).run();
+  }
+
+  // 상태가 바뀔 때만 이벤트 기록 (실패가 계속되어도 로그가 넘치지 않도록)
+  const wasFailing = Boolean(snapshot?.last_error);
+  const actorType = source === 'device' ? 'device' : 'system';
+  if (lastError && !wasFailing) {
+    await logEvent(env, { source, eventType: 'external.central_library_failed', actorType, actorId, payload: { error: lastError } });
+  } else if (!lastError && wasFailing) {
+    await logEvent(env, { source, eventType: 'external.central_library_recovered', actorType, actorId });
+  }
+}
+
 export async function refreshSnapshot(env, snapshot) {
   if (!(await claimRefresh(env))) return false;
   const previous = snapshot?.payload ? safeParse(snapshot.payload) : null;
@@ -141,26 +184,44 @@ export async function refreshSnapshot(env, snapshot) {
   } catch (err) {
     errors = [String(err?.message ?? err).slice(0, 120)];
   }
-  const lastError = errors.length ? errors.join(' / ') : null;
-  const anyFresh = campuses.some((c) => c.fetched_at && Date.now() - Date.parse(c.fetched_at) < CLAIM_MS);
-
-  if (anyFresh) {
-    await env.DB.prepare(
-      'UPDATE external_snapshots SET payload = ?2, fetched_at = ?3, last_error = ?4 WHERE source = ?1',
-    ).bind(SOURCE, JSON.stringify({ campuses }), nowIso(), lastError).run();
-  } else {
-    await env.DB.prepare('UPDATE external_snapshots SET last_error = ?2 WHERE source = ?1')
-      .bind(SOURCE, lastError).run();
-  }
-
-  // 상태가 바뀔 때만 이벤트 기록 (실패가 계속되어도 로그가 넘치지 않도록)
-  const wasFailing = Boolean(snapshot?.last_error);
-  if (lastError && !wasFailing) {
-    await logEvent(env, { source: 'system', eventType: 'external.central_library_failed', actorType: 'system', payload: { error: lastError } });
-  } else if (!lastError && wasFailing) {
-    await logEvent(env, { source: 'system', eventType: 'external.central_library_recovered', actorType: 'system' });
-  }
+  await saveSnapshot(env, snapshot, campuses, errors);
   return true;
+}
+
+/**
+ * 라즈베리파이가 올린 원본을 검증/정규화한다 (장치 입력도 신뢰하지 않음).
+ * body: { campuses: [{ id: 1, data: [...libgate rooms] }], errors: ["..."] }
+ */
+export function ingestDevicePayload(body, previous) {
+  const items = Array.isArray(body?.campuses) ? body.campuses.slice(0, CAMPUSES.length) : [];
+  const fresh = new Map();
+  const errors = [];
+  for (const item of items) {
+    const campus = CAMPUSES.find((c) => c.id === Number(item?.id));
+    if (!campus || fresh.has(campus.id)) continue;
+    try {
+      fresh.set(campus.id, { ...normalizeCampus(campus, item.data), fetched_at: nowIso() });
+    } catch {
+      errors.push(`${campus.library}: invalid_payload`);
+    }
+  }
+  if (Array.isArray(body?.errors)) {
+    for (const e of body.errors.slice(0, 5)) errors.push(toText(e, 120));
+  }
+  const prevById = new Map((previous?.campuses ?? []).map((c) => [c.id, c]));
+  const campuses = CAMPUSES.map((c) => fresh.get(c.id) ?? prevById.get(c.id)).filter(Boolean);
+  return { campuses, errors, received: fresh.size };
+}
+
+/** POST /api/device/central-library (장치 토큰 필요) */
+export async function handleDeviceCentralLibrary(ctx) {
+  const device = await requireDevice(ctx);
+  const body = await readJson(ctx.request, 64 * 1024);
+  const snapshot = await readSnapshot(ctx.env);
+  const previous = snapshot?.payload ? safeParse(snapshot.payload) : null;
+  const { campuses, errors, received } = ingestDevicePayload(body, previous);
+  await saveSnapshot(ctx.env, snapshot, campuses, errors, { source: 'device', actorId: device.deviceId });
+  return json({ accepted: true, received, errors: errors.length }, 202);
 }
 
 function safeParse(text) {
@@ -174,7 +235,8 @@ export async function handleCentralLibrary({ env, ctx }) {
   let snapshot = await readSnapshot(env);
   const age = snapshot?.fetched_at ? Date.now() - Date.parse(snapshot.fetched_at) : Infinity;
 
-  if (age > FRESH_MS) {
+  // relay 모드에서는 라즈베리파이가 올려 주므로 서버가 학교 서버를 호출하지 않는다
+  if (mode(env) === 'direct' && age > FRESH_MS) {
     if (!snapshot?.payload) {
       // 저장된 결과가 전혀 없으면 이번 요청에서 기다렸다가 응답
       await refreshSnapshot(env, snapshot);

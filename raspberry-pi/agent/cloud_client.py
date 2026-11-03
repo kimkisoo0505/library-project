@@ -104,6 +104,10 @@ class CloudClient:
         body = {"type": event_type, **fields}
         return await self._request("POST", "/api/device/events", device_auth=True, body=body)
 
+    async def post_central_library(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """중앙/금화도서관 공석 원본을 서버로 중계 (서버가 다시 검증/정규화)."""
+        return await self._request("POST", "/api/device/central-library", device_auth=True, body=payload)
+
     async def run_websocket(self, stop_event: asyncio.Event) -> None:
         """좌석 변경 알림 구독. 끊기면 1초~60초 지수 백오프로 재연결."""
         import websockets
