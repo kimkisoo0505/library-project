@@ -24,7 +24,7 @@ powershell -ExecutionPolicy Bypass -File scripts\check_environment.ps1
 | 3 | Arduino 펌웨어 업로드, 시리얼 모니터로 프로토콜 검증 | 예정 |
 | 4 | Pi에 에이전트 설치, 로컬 API(개발 PC)와 연동 시험 | 예정 |
 | 5 | 버튼 방식 확정 및 버튼 → 동작 매핑 구현 | 예정 |
-| 6 | Cloudflare 배포 (D1 원격, Workers, Pages), 장치 토큰 등록 | 예정 |
+| 6 | Cloudflare 배포 (D1 원격, Workers, Pages), 장치 토큰 등록 | Workers 자동 배포 구성 완료 (GitHub Actions, Secrets 등록 필요), Pages 예정 |
 | 7 | 서보모터 안전 설계 검토 후 구현 | 예정 |
 | 8 | 운영 정책 (운영 시간, 이용 시간 제한, 로그 보존) | 예정 |
 

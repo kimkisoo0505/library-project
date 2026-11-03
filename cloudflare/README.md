@@ -37,13 +37,48 @@ npx wrangler dev
 비밀번호 해시는 `auth.js`의 `hashPassword()` 형식(`pbkdf2_sha256$...`)을 따릅니다.
 (계정 발급 도구는 아직 미구현 — [DEVELOPMENT.md](../docs/DEVELOPMENT.md) 참고)
 
-## 배포 (아직 수행하지 않음)
+## 자동 배포 (GitHub Actions)
+
+`main` 브랜치에 `cloudflare/**` 변경이 push되면 [deploy-worker.yml](../.github/workflows/deploy-worker.yml)이 실행됩니다.
+
+```
+push ──▶ check (문법 · 스키마 · wrangler dry-run)
+              │ 통과 + main 브랜치
+              ▼
+         deploy: wrangler.toml 생성 → D1 마이그레이션(--remote) → wrangler deploy
+```
+
+- PR에서는 check만 실행되며 비밀 값을 사용하지 않습니다.
+- Secrets가 없으면 deploy는 경고를 남기고 건너뜁니다.
+- `wrangler.toml`은 저장소에 없고, CI가 `wrangler.toml.example` + Secrets로 생성합니다.
+- GitHub Actions 탭에서 **Run workflow**로 수동 실행도 가능합니다.
+
+### 최초 1회 설정
+
+1. **D1 생성** — Cloudflare 대시보드 → Storage & Databases → D1 → Create → 이름 `library-seat-db` → Database ID 복사
+2. **계정 ID** — 대시보드 Workers & Pages 개요 화면 오른쪽의 Account ID 복사
+3. **API 토큰** — My Profile → API Tokens → Create Token → "Edit Cloudflare Workers" 템플릿 선택 후 권한에 `Account · D1 · Edit` 추가, 계정 범위를 본인 계정으로 제한
+4. **GitHub Secrets** — 저장소 Settings → Secrets and variables → Actions → New repository secret
+
+   | 이름 | 값 |
+   |---|---|
+   | `CLOUDFLARE_API_TOKEN` | 3번 토큰 |
+   | `CLOUDFLARE_ACCOUNT_ID` | 2번 ID |
+   | `D1_DATABASE_ID` | 1번 ID |
+
+   선택: Variables 탭에 `ALLOWED_ORIGINS` (예: `https://<pages 도메인>,http://localhost:5173`)
+5. **workers.dev 서브도메인** — 대시보드 Workers & Pages에 처음 들어가면 서브도메인 등록 안내가 나옵니다. 등록하지 않으면 배포가 실패합니다.
+6. **첫 배포 후 장치 토큰 등록** (CI에서는 다루지 않음, 한 번 등록하면 유지됨)
+   ```powershell
+   npx wrangler login
+   npx wrangler secret put DEVICE_TOKEN
+   ```
+
+### 수동 배포 (비상용)
 
 ```powershell
 npx wrangler login
-npx wrangler d1 create library-seat-db          # 출력된 database_id를 wrangler.toml에 기록
 npx wrangler d1 migrations apply library-seat-db --remote
-npx wrangler secret put DEVICE_TOKEN
 npx wrangler deploy
 ```
 

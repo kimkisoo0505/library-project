@@ -1,0 +1,16 @@
+{
+  "name": "library-seat-api",
+  "private": true,
+  "version": "0.1.0",
+  "description": "도서관 좌석 관리 시스템 - Cloudflare Workers API",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "migrate:local": "wrangler d1 migrations apply library-seat-db --local",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
