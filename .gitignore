@@ -7,6 +7,8 @@
 !web/kiosk/.env.development
 *.pem
 *.key
+# 예외: 공개 중간 인증서 (개인 키 아님). 이 폴더에는 공개 인증서만 둔다
+!raspberry-pi/agent/certs/*.pem
 .dev.vars
 .dev.vars.*
 secrets/
