@@ -7,9 +7,13 @@
  *
  * 장치 입력도 신뢰하지 않는다: 허용된 필드만 정규화해서 저장한다. IP/MAC 등은 저장하지 않는다.
  */
-import { json, nowIso, readJson, HttpError } from './router.js';
-import { requireDevice } from './auth.js';
+import { json, nowIso, readJson, HttpError, logEvent } from './router.js';
+import { requireDevice, requireAdmin } from './auth.js';
 import { SOURCE as CENTRAL_LIBRARY_SOURCE } from './central-library.js';
+import { SEAT_ROOM_NAME } from './seats.js';
+
+const COMMAND_TTL_MS = 60_000;       // 원격 명령 유효 시간 (늦게 도착한 명령은 장치가 무시)
+export const SHUTDOWN_CONFIRM_TEXT = 'SHUTDOWN';
 
 const ONLINE_MS = 90_000;            // 마지막 보고가 90초 이내면 연결됨
 const CENTRAL_OK_MS = 3 * 60_000;    // 중앙도서관 정보가 3분 이내 갱신되었으면 정상
@@ -109,4 +113,66 @@ export async function handleSystemStatus({ env }) {
     env.DB.prepare('SELECT fetched_at, last_error FROM external_snapshots WHERE source = ?1').bind(CENTRAL_LIBRARY_SOURCE).first(),
   ]);
   return json(buildSystemStatus(results ?? [], central));
+}
+
+/**
+ * POST /api/admin/devices/:room/shutdown  (관리자 전용)
+ * body: { "confirm": "SHUTDOWN" }
+ *
+ * 안전 장치:
+ *  - 관리자 세션 + 확인 문자열 필요
+ *  - 라즈베리파이 담당 열람실만 대상 (아두이노는 해당 없음)
+ *  - 장치가 지금 연결되어 있을 때만 보냄 (오프라인 장치에 명령을 쌓아두지 않음)
+ *  - 명령에 만료 시각을 넣어 늦게 도착하면 장치가 무시
+ *  - 요청은 events 에 기록
+ */
+export async function handleAdminDeviceShutdown(ctx) {
+  const admin = await requireAdmin(ctx);
+  const room = String(ctx.params.room ?? '').toUpperCase();
+  const expected = EXPECTED_DEVICES.find((d) => d.room === room);
+  if (!expected) throw new HttpError(404, 'device_not_found', '존재하지 않는 장치입니다.');
+  if (expected.kind !== 'raspberry-pi') {
+    throw new HttpError(400, 'unsupported_device', '원격 종료는 라즈베리파이만 지원합니다.');
+  }
+
+  const body = await readJson(ctx.request, 1024);
+  if (body.confirm !== SHUTDOWN_CONFIRM_TEXT) {
+    throw new HttpError(400, 'confirmation_required', `확인 문자열 "${SHUTDOWN_CONFIRM_TEXT}" 가 필요합니다.`);
+  }
+
+  const row = await ctx.env.DB.prepare(
+    'SELECT device_id, last_seen_at FROM device_status WHERE room = ?1 ORDER BY last_seen_at DESC LIMIT 1',
+  ).bind(room).first();
+  const online = row && Date.now() - Date.parse(row.last_seen_at) <= ONLINE_MS;
+  if (!online) throw new HttpError(409, 'device_offline', '장치가 연결되어 있지 않아 명령을 보낼 수 없습니다.');
+
+  const now = new Date();
+  const command = {
+    type: 'device.command',
+    command: 'shutdown',
+    id: crypto.randomUUID(),
+    room,
+    issued_at: now.toISOString(),
+    expires_at: new Date(now.getTime() + COMMAND_TTL_MS).toISOString(),
+  };
+
+  const stub = ctx.env.SEAT_ROOM.get(ctx.env.SEAT_ROOM.idFromName(SEAT_ROOM_NAME));
+  const res = await stub.fetch('https://seat-room/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(command),
+  });
+  const { delivered = 0 } = await res.json().catch(() => ({}));
+
+  await logEvent(ctx.env, {
+    source: 'admin',
+    eventType: 'device.shutdown_requested',
+    actorType: 'admin',
+    actorId: admin.subjectId,
+    payload: { room, device_id: row.device_id, command_id: command.id, delivered },
+  });
+  if (delivered === 0) {
+    throw new HttpError(409, 'device_not_listening', '장치의 실시간 연결이 없어 명령을 전달하지 못했습니다.');
+  }
+  return json({ accepted: true, command_id: command.id, delivered, expires_at: command.expires_at }, 202);
 }

@@ -243,6 +243,7 @@ const DEVICE_EVENT_TYPES = new Set([
   'serial_hello',
   'protocol_error',
   'button',
+  'command_ack',
 ]);
 
 /**
@@ -259,7 +260,7 @@ export async function handleDeviceEvent(ctx) {
   }
 
   const payload = {};
-  for (const key of ['button_id', 'action', 'firmware', 'device_time', 'seq', 'detail']) {
+  for (const key of ['button_id', 'action', 'firmware', 'device_time', 'seq', 'detail', 'command_id', 'command', 'result']) {
     if (body[key] !== undefined) payload[key] = String(body[key]).slice(0, 64);
   }
 

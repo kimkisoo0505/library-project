@@ -1,0 +1,13 @@
+// /etc/polkit-1/rules.d/50-library-agent-poweroff.rules
+// 도서관 에이전트(사용자 pi)가 관리자 화면의 원격 종료 명령을 실행할 수 있도록
+// "전원 끄기"만 허용한다. 재부팅·절전 등 다른 동작은 허용하지 않는다.
+// 설치: sudo install -m 644 system/50-library-agent-poweroff.rules /etc/polkit-1/rules.d/
+// 실제 실행 여부는 에이전트 .env 의 ALLOW_REMOTE_SHUTDOWN=true 로도 한 번 더 제한된다.
+polkit.addRule(function (action, subject) {
+    if (subject.user === "pi" &&
+        (action.id === "org.freedesktop.login1.power-off" ||
+         action.id === "org.freedesktop.login1.power-off-multiple-sessions" ||
+         action.id === "org.freedesktop.login1.power-off-ignore-inhibit")) {
+        return polkit.Result.YES;
+    }
+});

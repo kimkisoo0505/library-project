@@ -20,6 +20,7 @@ Arduino ──USB 시리얼──▶ agent ──HTTPS/WSS (외부 발신)──
 | `agent/room_display.py` | 열람실 LCD 화면 내용 계산 (Welcome 2초 + 지우기 애니메이션, 사용중/공석) |
 | `agent/lcd_display.py` | I2C 16x2 LCD 드라이버: Grove LCD RGB Backlight(기본) / PCF8574 백팩, 바뀐 글자만 다시 씀 |
 | `agent/library_status.py` | 경기대 중앙/금화도서관 공석 중계 (중간 인증서 포함, 검증 유지) |
+| `agent/remote_command.py` | 관리자 원격 명령(전원 끄기) 검증·실행 — `ALLOW_REMOTE_SHUTDOWN`, polkit 규칙 `system/50-library-agent-poweroff.rules` 필요 |
 | `agent/certs/` | 학교 서버가 빠뜨린 공개 중간 인증서 (RapidSSL TLS RSA CA G1, ~2027-11-02) |
 
 ## 안전 동작

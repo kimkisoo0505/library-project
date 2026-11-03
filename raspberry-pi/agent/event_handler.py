@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from .cloud_client import CloudRequestRejected, CloudUnavailableError
@@ -43,12 +44,21 @@ class EventHandler:
         self._cloud: CloudPort | None = None
         self._serial: SerialPortManager | None = None
         self._display: WelcomeDisplay | None = None
+        self._on_command: Callable[[dict[str, Any]], Awaitable[Any]] | None = None
         self._log = get_logger("events")
 
-    def attach(self, *, cloud: CloudPort, serial: SerialPortManager, display: WelcomeDisplay | None = None) -> None:
+    def attach(
+        self,
+        *,
+        cloud: CloudPort,
+        serial: SerialPortManager,
+        display: WelcomeDisplay | None = None,
+        on_command: Callable[[dict[str, Any]], Awaitable[Any]] | None = None,
+    ) -> None:
         self._cloud = cloud
         self._serial = serial
         self._display = display
+        self._on_command = on_command
 
     # ----- Arduino -> 에이전트 -----
 
@@ -113,6 +123,11 @@ class EventHandler:
             case "seats.changed":
                 self._maybe_welcome(message)
                 await self.refresh_seats()
+            case "device.command":
+                if self._on_command is None:
+                    log_event(self._log, "command.ignored", "원격 명령 처리기 없음", level=logging.WARNING)
+                else:
+                    await self._on_command(message)
             case "hello":
                 log_event(self._log, "cloud.hello", "클라우드 세션 시작", role=message.get("role"))
             case "pong":

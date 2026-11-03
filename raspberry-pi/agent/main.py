@@ -17,6 +17,7 @@ from . import __version__
 from .cloud_client import CloudClient, CloudRequestRejected, CloudUnavailableError
 from .config import AgentConfig, ConfigError, load_config, load_dotenv_file
 from .device_status import DeviceStatusReporter
+from .remote_command import RemoteCommandHandler
 from .event_handler import EventHandler
 from .lcd_display import create_lcd
 from .library_status import LibraryStatusRelay
@@ -115,7 +116,19 @@ async def run_agent(config: AgentConfig) -> None:
         on_message=handler.on_cloud_message,
         on_connection_change=handler.on_cloud_connection_change,
     ) as cloud:
-        handler.attach(cloud=cloud, serial=serial, display=display if config.lcd_enabled else None)
+        commands = RemoteCommandHandler(
+            room=config.device_room,
+            allow_shutdown=config.allow_remote_shutdown,
+            report=cloud.post_device_event,
+            show_message=display.show_message,
+            clear_message=display.clear_message,
+        )
+        handler.attach(
+            cloud=cloud,
+            serial=serial,
+            display=display if config.lcd_enabled else None,
+            on_command=commands.handle,
+        )
 
         with contextlib.suppress(CloudUnavailableError, CloudRequestRejected):
             await cloud.post_device_event("agent_started", detail=__version__)

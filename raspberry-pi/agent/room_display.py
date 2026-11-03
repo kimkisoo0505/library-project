@@ -44,6 +44,13 @@ class RoomDisplay:
         self._idle_text = idle_text
         self._clock = clock
         self._welcome_started: float | None = None
+        self._message: tuple[str, str] | None = None   # 시스템 메시지 (예: 종료 중) - 다른 표시보다 우선
+
+    def show_message(self, line1: str, line2: str) -> None:
+        self._message = (line1, line2)
+
+    def clear_message(self) -> None:
+        self._message = None
 
     def show_welcome(self) -> None:
         """진행 중인 애니메이션이 있어도 처음부터 다시 시작한다."""
@@ -79,6 +86,8 @@ class RoomDisplay:
         return self._welcome_started is not None
 
     def frame(self) -> Frame:
+        if self._message is not None:
+            return Frame(self._message[0], self._message[1], offline=False)
         line2 = self._line2()
         return Frame(self._line1(self._clock()), line2, offline=not self._seats.can_forward_requests())
 

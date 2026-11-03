@@ -19,7 +19,7 @@ import {
 } from './reservations.js';
 
 import { handleCentralLibrary, handleDeviceCentralLibrary } from './central-library.js';
-import { handleDeviceStatus, handleSystemStatus } from './system-status.js';
+import { handleDeviceStatus, handleSystemStatus, handleAdminDeviceShutdown } from './system-status.js';
 
 export { SeatRoom } from './durable-objects/seat-room.js';
 
@@ -50,6 +50,7 @@ const router = new Router()
   .post('/api/admin/seats/:id/status', handleAdminSetSeatStatus)
   .post('/api/admin/reservations/:id/release', handleAdminReleaseReservation)
   .get('/api/admin/events', handleAdminEvents)
+  .post('/api/admin/devices/:room/shutdown', handleAdminDeviceShutdown)
 
   // 라즈베리파이 장치
   .post('/api/device/events', handleDeviceEvent)

@@ -46,6 +46,8 @@ class AgentConfig:
     lcd_color_offline: tuple[int, int, int] = (255, 0, 0)    # Offline 빨간색
     lcd_welcome_seconds: float = 2.0       # Welcome 표시 유지 시간
     lcd_erase_step_seconds: float = 0.15   # 마지막 글자부터 한 글자씩 지우는 간격
+    # 관리자 화면에서 원격 종료 허용 (기본 꺼짐)
+    allow_remote_shutdown: bool = False
     # 경기대 중앙/금화도서관 공석 중계
     central_library_relay: bool = False
     central_library_interval_seconds: float = 60.0
@@ -68,6 +70,7 @@ class AgentConfig:
             "lcd_type": self.lcd_type,
             "lcd_i2c_address": hex(self.lcd_i2c_address),
             "lcd_rgb_address": hex(self.lcd_rgb_address),
+            "allow_remote_shutdown": self.allow_remote_shutdown,
             "central_library_relay": self.central_library_relay,
             "central_library_interval_seconds": self.central_library_interval_seconds,
         }
@@ -224,6 +227,7 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         lcd_color_offline=_get_rgb(source, "LCD_COLOR_OFFLINE", (255, 0, 0)),
         lcd_welcome_seconds=_get_number(source, "LCD_WELCOME_SECONDS", 2.0, minimum=0.5, maximum=60),
         lcd_erase_step_seconds=_get_number(source, "LCD_ERASE_STEP_SECONDS", 0.15, minimum=0.02, maximum=2),
+        allow_remote_shutdown=_get_bool(source, "ALLOW_REMOTE_SHUTDOWN", False),
         central_library_relay=_get_bool(source, "CENTRAL_LIBRARY_RELAY", False),
         # 학교 서버 부담을 고려해 30초 미만으로는 설정할 수 없다
         central_library_interval_seconds=_get_number(

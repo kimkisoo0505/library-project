@@ -102,4 +102,6 @@ export const api = {
   adminReleaseReservation: (id, reason) =>
     request(`/admin/reservations/${encodeURIComponent(id)}/release`, { method: 'POST', auth: 'admin', body: { reason } }),
   adminEvents: (limit = 50) => request(`/admin/events?limit=${encodeURIComponent(limit)}`, { auth: 'admin' }),
+  adminShutdownDevice: (room) =>
+    request(`/admin/devices/${encodeURIComponent(room)}/shutdown`, { method: 'POST', auth: 'admin', body: { confirm: 'SHUTDOWN' } }),
 };

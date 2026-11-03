@@ -11,6 +11,15 @@
  */
 export const SHOW_TEST_ACCOUNTS = import.meta.env.VITE_SHOW_TEST_ACCOUNTS === 'true';
 
+/**
+ * 테스트 관리자 계정 안내 (관리자 로그인 화면에만 표시). VITE_SHOW_ADMIN_ACCOUNT=true 일 때만 빌드에 포함.
+ * ⚠️ 공개 사이트에 관리자 비밀번호가 노출된다 = 누구나 관리자 기능(예약 강제 해제, 라즈베리파이 원격 종료)을 쓸 수 있다.
+ *    시연 직후 반드시 끄고 `node scripts/accounts.mjs reset-password admin testadmin --remote --yes` 로 재설정할 것.
+ */
+export const SHOW_ADMIN_ACCOUNT = import.meta.env.VITE_SHOW_ADMIN_ACCOUNT === 'true';
+
+export const TEST_ADMIN = SHOW_ADMIN_ACCOUNT ? { username: 'testadmin', password: 'DjXbbXXVBJs4' } : null;
+
 export const TEST_STUDENTS = SHOW_TEST_ACCOUNTS
   ? [
       { studentNo: 'TEST-0001', name: '테스트학생1', password: 'JEzveJCCMPJx' },

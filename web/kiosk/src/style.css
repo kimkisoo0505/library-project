@@ -185,3 +185,16 @@ h2 { font-size: 1.15rem; }
   .ss-item { grid-template-columns: 12px 1fr; }
   .ss-detail { grid-column: 2; }
 }
+
+/* ----- 관리자: 현장 장치 ----- */
+.device-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.device-item { display: grid; grid-template-columns: 12px auto 1fr auto; align-items: center; gap: 10px; font-size: 0.9rem; }
+.device-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
+.device-item.is-online .device-dot { background: var(--available); }
+.device-name { font-weight: 700; }
+.device-meta { color: var(--muted); }
+.device-item .btn { min-height: 34px; padding: 4px 12px; font-size: 0.85rem; }
+@media (max-width: 520px) {
+  .device-item { grid-template-columns: 12px 1fr; }
+  .device-item .device-meta, .device-item .btn { grid-column: 2; justify-self: start; }
+}

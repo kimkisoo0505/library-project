@@ -189,6 +189,10 @@ id -nG | grep -wq i2c     || sudo usermod -aG i2c pi
 sudo install -m 644 systemd/library-agent.service.example /etc/systemd/system/library-agent.service
 sudo systemctl daemon-reload && sudo systemctl enable --now library-agent
 
+# (6-1) 관리자 화면 원격 종료 허용 (선택): polkit 규칙 + .env 의 ALLOW_REMOTE_SHUTDOWN=true
+sudo install -m 644 system/50-library-agent-poweroff.rules /etc/polkit-1/rules.d/
+sudo systemctl restart library-agent
+
 # (7) Wi-Fi: 집 우선, 없으면 핸드폰 핫스팟 (비밀번호는 SECRETS.txt)
 HOME_CON=$(nmcli -t -f NAME,TYPE connection show | grep 802-11-wireless | head -1 | cut -d: -f1)
 sudo nmcli connection modify "$HOME_CON" connection.autoconnect yes connection.autoconnect-priority 10 connection.autoconnect-retries 0

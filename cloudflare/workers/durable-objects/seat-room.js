@@ -26,6 +26,21 @@ export class SeatRoom {
       return new Response(null, { status: 204 });
     }
 
+    // 장치 전용 명령 (예: 원격 종료). 일반 화면(viewer)에는 보내지 않는다.
+    if (url.pathname === '/command' && request.method === 'POST') {
+      const message = await request.text();
+      let delivered = 0;
+      for (const ws of this.state.getWebSockets('device')) {
+        try {
+          ws.send(message);
+          delivered += 1;
+        } catch (err) {
+          console.warn('seat_room_command_send_failed', err);
+        }
+      }
+      return new Response(JSON.stringify({ delivered }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (url.pathname === '/connect') {
       if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
         return new Response('Expected WebSocket upgrade', { status: 426 });

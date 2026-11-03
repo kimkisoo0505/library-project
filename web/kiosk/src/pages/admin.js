@@ -3,6 +3,7 @@ import { SeatSocket } from '../websocket.js';
 import { createLoginForm } from '../components/login-form.js';
 import { STATE_LABELS } from '../components/seat-card.js';
 import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
+import { TEST_ADMIN } from '../test-accounts.js';
 
 const ROOM_PREF_KEY = 'library.admin.room';
 
@@ -21,7 +22,7 @@ function formatDateTime(iso) {
 
 /** 관리자 화면: 학생 세션과 분리된 관리자 세션을 사용한다. */
 export function renderAdmin(root) {
-  const state = { admin: null, rooms: [], seats: [], events: [], busy: false, room: roomPreference.load(ROOM_PREF_KEY) || 'A' };
+  const state = { admin: null, rooms: [], seats: [], events: [], devices: [], busy: false, room: roomPreference.load(ROOM_PREF_KEY) || 'A' };
   const roomTabs = createRoomTabs({
     onSelect: (code) => {
       state.room = code;
@@ -71,7 +72,12 @@ export function renderAdmin(root) {
   async function refresh() {
     if (!state.admin) { render(); return; }
     try {
-      const [seats, events] = await Promise.all([api.adminListSeats(), api.adminEvents(50)]);
+      const [seats, events, status] = await Promise.all([
+        api.adminListSeats(),
+        api.adminEvents(50),
+        api.systemStatus().catch(() => null),
+      ]);
+      state.devices = status?.devices ?? [];
       state.rooms = seats.rooms ?? [];
       state.seats = seats.seats;
       state.events = events.events;
@@ -144,6 +150,73 @@ export function renderAdmin(root) {
     return table;
   }
 
+  async function shutdownDevice(device) {
+    const first = window.confirm([
+      `${device.label}의 전원을 끕니다.`,
+      '',
+      '• 열람실 A 의 LCD 와 중앙도서관 정보 중계가 멈춥니다.',
+      '• 다시 켜려면 현장에서 전원 케이블을 뽑았다가 다시 꽂아야 합니다.',
+      '',
+      '계속할까요?',
+    ].join('\n'));
+    if (!first) return;
+    const typed = window.prompt('확인을 위해 "끄기" 를 입력하세요.');
+    if ((typed ?? '').trim() !== '끄기') {
+      showMessage('입력이 일치하지 않아 취소했습니다.', 'info');
+      return;
+    }
+    await runAction(
+      () => api.adminShutdownDevice(device.room),
+      `${device.label}에 종료 명령을 보냈습니다. LCD 에 "Shutting down" 이 보이고 약 30초 후 꺼집니다. 다시 켜려면 전원을 뽑았다 꽂으세요.`,
+    );
+  }
+
+  function renderDevices() {
+    const list = el('ul', 'device-list');
+    if (state.devices.length === 0) list.append(el('li', 'hint', '장치 상태를 불러오지 못했습니다.'));
+    for (const d of state.devices) {
+      const item = el('li', `device-item ${d.online ? 'is-online' : 'is-offline'}`);
+      const net = d.network?.type === 'wifi' ? ` · Wi-Fi ${d.network.ssid ?? ''}` : d.network?.type === 'ethernet' ? ' · 유선' : '';
+      item.append(
+        el('span', 'device-dot'),
+        el('span', 'device-name', d.label),
+        el('span', 'device-meta', d.online ? `연결됨${net}` : '연결 안 됨'),
+      );
+      if (d.kind === 'raspberry-pi') {
+        const off = button('라즈베리파이 끄기', 'btn-danger', () => shutdownDevice(d));
+        off.disabled = state.busy || !d.online;
+        if (!d.online) off.title = '연결되어 있지 않아 끌 수 없습니다';
+        item.append(off);
+      }
+      list.append(item);
+    }
+    return list;
+  }
+
+  function renderAdminAccountNotice() {
+    if (!TEST_ADMIN) return null;
+    const box = el('section', 'test-accounts');
+    box.setAttribute('aria-label', '테스트 관리자 계정 안내');
+    box.append(
+      el('h3', null, '테스트 관리자 계정 (시연용)'),
+      el('p', 'hint', '시연 기간 임시 안내입니다. 누르면 로그인 정보가 입력됩니다.'),
+    );
+    const b = el('button', 'test-account');
+    b.type = 'button';
+    b.append(el('span', 'test-account-id', TEST_ADMIN.username), el('span', 'test-account-name', '관리자'),
+      el('code', 'test-account-pw', TEST_ADMIN.password));
+    b.addEventListener('click', () => {
+      loginForm.fill(TEST_ADMIN.username, TEST_ADMIN.password);
+      showMessage('관리자 계정 정보를 입력했습니다. 로그인 버튼을 누르세요.', 'info');
+    });
+    const list = el('ul', 'test-account-list');
+    const li = el('li');
+    li.append(b);
+    list.append(li);
+    box.append(list);
+    return box;
+  }
+
   function renderEvents() {
     const list = el('ol', 'event-list');
     for (const e of state.events) {
@@ -166,6 +239,8 @@ export function renderAdmin(root) {
     content.replaceChildren();
     if (!state.admin) {
       content.append(loginForm.element);
+      const notice = renderAdminAccountNotice();
+      if (notice) content.append(notice);
       return;
     }
     userBox.append(
@@ -181,9 +256,11 @@ export function renderAdmin(root) {
     const seatSection = el('section', 'card');
     roomTabs.update(state.rooms, state.room);
     seatSection.append(el('h2', null, '좌석 관리'), roomTabs.element, renderSeatTable());
+    const deviceSection = el('section', 'card');
+    deviceSection.append(el('h2', null, '현장 장치'), renderDevices());
     const eventSection = el('section', 'card');
     eventSection.append(el('h2', null, '최근 이벤트 (50건)'), button('새로고침', 'btn-ghost', refresh), renderEvents());
-    content.append(seatSection, eventSection);
+    content.append(deviceSection, seatSection, eventSection);
   }
 
   const socket = new SeatSocket({

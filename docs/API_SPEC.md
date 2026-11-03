@@ -126,6 +126,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 | POST | `/admin/seats/:id/status` | `{ "status": "maintenance" \| "available", "reason": "..." }` 활성 예약이 있으면 `409 seat_in_use` |
 | POST | `/admin/reservations/:id/release` | 활성 예약 강제 해제 `{ "reason": "..." }` (사유 필수) |
 | GET | `/admin/events?limit=50&before_id=` | 이벤트 로그 최신순 (limit 1~200) |
+| POST | `/admin/devices/:room/shutdown` | 라즈베리파이 원격 종료 `{ "confirm": "SHUTDOWN" }` → 202. 장치가 90초 내 보고가 없으면 `409 device_offline`, 실시간 연결이 없으면 `409 device_not_listening`. 아두이노 열람실은 `400 unsupported_device` |
 
 ## 6. 장치 (장치 토큰)
 
@@ -180,6 +181,12 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 { "type": "pong", "at": "..." }
 ```
 클라이언트 → 서버: `{ "type": "ping" }` 만 허용 (그 외 무시)
+
+서버 → **장치 전용** (`role=device` 연결에만, 일반 화면에는 보내지 않음):
+```json
+{ "type": "device.command", "command": "shutdown", "id": "<uuid>", "room": "A", "issued_at": "...", "expires_at": "(+60초)" }
+```
+장치는 room 일치·만료 전·중복 아님·`ALLOW_REMOTE_SHUTDOWN=true` 일 때만 실행하고 `POST /device/events {type:"command_ack", result}` 로 보고합니다.
 
 ## 8. 미구현 / 예정
 
