@@ -33,9 +33,39 @@ npx wrangler dev
 # http://127.0.0.1:8787/api/health
 ```
 
-로컬 D1에는 학생/관리자 계정이 없습니다. 테스트 계정은 명백한 가짜 값(예: `TEST-0001`)으로만 만들고,
-비밀번호 해시는 `auth.js`의 `hashPassword()` 형식(`pbkdf2_sha256$...`)을 따릅니다.
-(계정 발급 도구는 아직 미구현 — [DEVELOPMENT.md](../docs/DEVELOPMENT.md) 참고)
+## 계정 관리 (scripts/accounts.mjs)
+
+비밀번호 해시는 서버의 `auth.js` `hashPassword()`를 그대로 사용합니다. 비밀번호를 지정하지 않으면
+12자 무작위 비밀번호를 생성해 **한 번만** 출력합니다. 모든 변경은 `events` 테이블에 기록됩니다.
+
+```powershell
+cd cloudflare
+# 로컬 D1 (기본값)
+node scripts/accounts.mjs create-student TEST-0001 테스트학생1
+node scripts/accounts.mjs create-admin testadmin
+node scripts/accounts.mjs list
+
+# 운영 D1 (변경 작업은 --yes 필수, wrangler login 또는 CLOUDFLARE_API_TOKEN 필요)
+node scripts/accounts.mjs create-admin myadmin --remote --yes
+node scripts/accounts.mjs list --remote
+
+# 비밀번호 재설정 / 비활성화 (기존 로그인 세션도 무효화됨)
+node scripts/accounts.mjs reset-password student TEST-0001 --remote --yes
+node scripts/accounts.mjs deactivate student TEST-0001 --remote --yes
+
+# 비밀번호를 직접 지정 (명령 기록에 남지 않도록 표준 입력 사용)
+"my-password-123" | node scripts/accounts.mjs create-admin myadmin --password-stdin
+```
+
+| 항목 | 규칙 |
+|---|---|
+| 학번 | 영문/숫자/하이픈 1~32자 |
+| 관리자 아이디 | 영문/숫자/`_ . -` 3~32자 |
+| 표시 이름 | 글자/숫자/공백/`._-` 1~40자 |
+| 비밀번호 | 8~128자 |
+
+테스트 계정은 `TEST-0001` 같은 명백한 가짜 값만 사용하세요. 실제 학생 정보를 넣지 않습니다.
+단위 테스트: `npm test`
 
 ## 자동 배포 (GitHub Actions)
 

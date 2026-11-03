@@ -12,6 +12,11 @@ import { HttpError, json, readJson, nowIso, logEvent } from './router.js';
 
 // Cloudflare Workers의 PBKDF2 최대 반복 횟수는 100,000회이다.
 const PBKDF2_ITERATIONS = 100_000;
+
+// 로그인 ID 형식 (계정 발급 도구 scripts/accounts.mjs 와 공유)
+export const STUDENT_NO_PATTERN = /^[A-Za-z0-9-]{1,32}$/;
+export const ADMIN_USERNAME_PATTERN = /^[A-Za-z0-9_.-]{3,32}$/;
+export const PASSWORD_MAX_LENGTH = 128;
 const encoder = new TextEncoder();
 
 function toBase64(bytes) {
@@ -140,14 +145,14 @@ export async function requireDevice({ request, env }) {
 function readCredentials(body, idField, idPattern) {
   const id = typeof body[idField] === 'string' ? body[idField].trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
-  if (!idPattern.test(id) || password.length < 1 || password.length > 128) {
+  if (!idPattern.test(id) || password.length < 1 || password.length > PASSWORD_MAX_LENGTH) {
     throw new HttpError(400, 'invalid_credentials_format', '로그인 정보 형식이 올바르지 않습니다.');
   }
   return { id, password };
 }
 
 export async function handleStudentLogin({ request, env }) {
-  const { id: studentNo, password } = readCredentials(await readJson(request), 'student_no', /^[A-Za-z0-9-]{1,32}$/);
+  const { id: studentNo, password } = readCredentials(await readJson(request), 'student_no', STUDENT_NO_PATTERN);
 
   const student = await env.DB.prepare(
     'SELECT id, display_name, password_hash FROM students WHERE student_no = ?1 AND is_active = 1',
@@ -175,7 +180,7 @@ export async function handleStudentLogin({ request, env }) {
 }
 
 export async function handleAdminLogin({ request, env }) {
-  const { id: username, password } = readCredentials(await readJson(request), 'username', /^[A-Za-z0-9_.-]{3,32}$/);
+  const { id: username, password } = readCredentials(await readJson(request), 'username', ADMIN_USERNAME_PATTERN);
 
   const admin = await env.DB.prepare(
     'SELECT id, username, password_hash FROM admins WHERE username = ?1 AND is_active = 1',

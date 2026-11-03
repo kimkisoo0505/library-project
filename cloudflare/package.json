@@ -8,6 +8,8 @@
     "dev": "wrangler dev",
     "migrate:local": "wrangler d1 migrations apply library-seat-db --local",
     "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "test": "node --test tests/",
+    "accounts": "node scripts/accounts.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {

@@ -19,7 +19,7 @@ powershell -ExecutionPolicy Bypass -File scripts\check_environment.ps1
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | 0 | 프로젝트 구조, 문서, 기본 골격 | **완료 (현재)** |
-| 1 | 로컬 D1 + `wrangler dev`로 API 동작 확인, 테스트 계정 발급 도구 | 예정 |
+| 1 | 로컬 D1 + `wrangler dev`로 API 동작 확인, 테스트 계정 발급 도구 | 완료 (`cloudflare/scripts/accounts.mjs`) |
 | 2 | 키오스크 ↔ 로컬 API 연동, 동시 예약 부하 테스트 | 예정 |
 | 3 | Arduino 펌웨어 업로드, 시리얼 모니터로 프로토콜 검증 | 예정 |
 | 4 | Pi에 에이전트 설치, 로컬 API(개발 PC)와 연동 시험 | 예정 |
@@ -37,7 +37,14 @@ python -m unittest discover -s tests -t . -v
 ```
 테스트 범위: 설정 검증, 좌석 캐시 안전 동작, 시리얼 프로토콜 파싱/명령 생성, 시리얼 재연결, 오프라인 시 버튼 거부.
 
-### 2.2 Workers (로컬)
+### 2.2 Workers 단위 테스트 / 계정 도구
+```powershell
+cd cloudflare
+npm test                                             # 비밀번호 해시, 계정 도구 검증
+node scripts/accounts.mjs create-student TEST-0001 테스트학생1   # 로컬 D1
+```
+
+### 2.3 Workers (로컬)
 ```powershell
 cd cloudflare
 copy wrangler.toml.example wrangler.toml
@@ -48,7 +55,7 @@ curl http://127.0.0.1:8787/api/seats
 ```
 동시 예약 검증(단계 2): 같은 좌석에 여러 학생 토큰으로 동시에 POST → 201 하나, 나머지 409인지 확인.
 
-### 2.3 웹 키오스크
+### 2.4 웹 키오스크
 ```powershell
 cd web\kiosk
 npm install
@@ -56,7 +63,7 @@ npm run dev     # wrangler dev 와 함께 실행
 npm run build
 ```
 
-### 2.4 Arduino
+### 2.5 Arduino
 시리얼 모니터(115200, Newline)에서:
 ```
 PING,1          → PONG,1
@@ -65,7 +72,7 @@ SERVO,1,90      → ERR,SERVO_DISABLED
 HELLO           → ERR,UNKNOWN_CMD
 ```
 
-### 2.5 라즈베리파이 현장 점검
+### 2.6 라즈베리파이 현장 점검
 ```bash
 bash scripts/check_raspberry_pi.sh
 ```
@@ -89,7 +96,7 @@ python -c "import sqlite3;c=sqlite3.connect(':memory:');c.executescript(open('cl
 
 ## 5. 아직 구현되지 않은 기능
 
-- 학생/관리자 계정 발급 도구 (비밀번호 해시 생성 CLI)
+- 관리자 화면에서의 학생 계정 발급 (현재는 CLI만 지원)
 - 로그인 시도 횟수 제한
 - 현장 확인 기반 착석 (현재는 학생 본인 요청으로 착석 처리)
 - 버튼 → 동작 매핑 (현재 장치 이벤트는 기록만)
