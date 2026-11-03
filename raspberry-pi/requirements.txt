@@ -1,0 +1,8 @@
+# Raspberry Pi 에이전트 의존성 (Python 3.13)
+# 설치: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+pyserial>=3.5,<4          # Arduino USB 시리얼 통신
+httpx>=0.27,<1            # 클라우드 REST API (HTTPS, 외부 발신)
+websockets>=14,<16        # 클라우드 실시간 알림 구독 (WSS, 외부 발신)
+python-dotenv>=1.0,<2     # .env 파일 로드
+
+# 테스트는 표준 unittest를 사용하므로 추가 패키지가 필요 없습니다.

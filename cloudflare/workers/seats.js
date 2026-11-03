@@ -1,0 +1,161 @@
+/**
+ * 좌석 조회, 관리자 좌석 상태 변경, 실시간 브로드캐스트, WebSocket 연결.
+ *
+ * 좌석의 표시 상태(state)는 다음 규칙으로 파생된다.
+ *   seats.status = 'maintenance'          -> maintenance
+ *   활성 예약(reserved/occupied) 존재      -> 해당 예약 상태
+ *   그 외                                  -> available
+ */
+import { HttpError, json, readJson, nowIso, logEvent, parsePositiveInt } from './router.js';
+import { authenticate, requireAdmin, requireDevice } from './auth.js';
+
+export const TOTAL_SEATS = 30;
+export const SEAT_ROOM_NAME = 'reading-room-1';
+
+export function parseSeatId(value) {
+  const seatId = parsePositiveInt(value, 'seat_id');
+  if (seatId > TOTAL_SEATS) throw new HttpError(400, 'invalid_parameter', 'seat_id 값이 범위를 벗어났습니다.');
+  return seatId;
+}
+
+async function querySeats(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT s.id, s.label, s.status AS seat_status, s.updated_at,
+            r.id AS reservation_id, r.student_id, r.status AS reservation_status,
+            r.reserved_at, r.expires_at, r.checked_in_at
+       FROM seats s
+       LEFT JOIN reservations r
+         ON r.seat_id = s.id AND r.status IN ('reserved', 'occupied')
+      ORDER BY s.id`,
+  ).all();
+  return results;
+}
+
+function seatState(row) {
+  if (row.seat_status === 'maintenance') return 'maintenance';
+  return row.reservation_status || 'available';
+}
+
+/** 공개용: 다른 학생의 식별 정보는 포함하지 않는다. */
+function toPublicSeat(row, viewerStudentId) {
+  const mine = viewerStudentId != null && row.student_id === viewerStudentId;
+  const seat = { id: row.id, label: row.label, state: seatState(row), mine };
+  if (mine) {
+    seat.reservation_id = row.reservation_id;
+    seat.expires_at = row.expires_at;
+  }
+  return seat;
+}
+
+export async function handleListSeats({ request, env }) {
+  let viewer = null;
+  if (request.headers.get('Authorization')) {
+    try {
+      viewer = await authenticate(request, env, 'student');
+    } catch {
+      viewer = null; // 좌석 현황은 비로그인으로도 조회 가능
+    }
+  }
+  const rows = await querySeats(env);
+  return json({ seats: rows.map((row) => toPublicSeat(row, viewer?.subjectId)), generated_at: nowIso() });
+}
+
+export async function handleAdminListSeats(ctx) {
+  await requireAdmin(ctx);
+  const rows = await querySeats(ctx.env);
+  return json({
+    seats: rows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      state: seatState(row),
+      seat_status: row.seat_status,
+      updated_at: row.updated_at,
+      reservation: row.reservation_id
+        ? {
+            id: row.reservation_id,
+            student_id: row.student_id,
+            status: row.reservation_status,
+            reserved_at: row.reserved_at,
+            expires_at: row.expires_at,
+            checked_in_at: row.checked_in_at,
+          }
+        : null,
+    })),
+    generated_at: nowIso(),
+  });
+}
+
+/** 관리자: 좌석을 점검(maintenance) 또는 사용 가능(available)으로 전환 */
+export async function handleAdminSetSeatStatus(ctx) {
+  const admin = await requireAdmin(ctx);
+  const seatId = parseSeatId(ctx.params.id);
+  const body = await readJson(ctx.request);
+  const status = body.status;
+  const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 200) : '';
+  if (status !== 'available' && status !== 'maintenance') {
+    throw new HttpError(400, 'invalid_parameter', 'status는 available 또는 maintenance여야 합니다.');
+  }
+
+  // 활성 예약이 있는 좌석은 점검 전환 불가 (먼저 예약을 해제해야 함) - 조건부 UPDATE로 원자적 처리
+  const updated = await ctx.env.DB.prepare(
+    `UPDATE seats SET status = ?1, updated_at = ?2
+      WHERE id = ?3
+        AND (?1 = 'available'
+             OR NOT EXISTS (SELECT 1 FROM reservations
+                             WHERE seat_id = ?3 AND status IN ('reserved', 'occupied')))
+      RETURNING id, status`,
+  ).bind(status, nowIso(), seatId).first();
+
+  if (!updated) {
+    throw new HttpError(409, 'seat_in_use', '활성 예약이 있는 좌석은 점검 상태로 바꿀 수 없습니다.');
+  }
+
+  await logEvent(ctx.env, {
+    source: 'admin',
+    eventType: 'seat.status_changed',
+    actorType: 'admin',
+    actorId: admin.subjectId,
+    seatId,
+    payload: { status, reason },
+  });
+  await broadcastSeatChange(ctx.env, seatId, 'seat.status_changed');
+  return json({ seat: updated });
+}
+
+/**
+ * Durable Object(SeatRoom)를 통해 연결된 모든 클라이언트에 변경 알림을 보낸다.
+ * 알림에는 개인정보를 넣지 않으며, 클라이언트는 알림을 받으면 /api/seats를 다시 조회한다.
+ */
+export async function broadcastSeatChange(env, seatId, reason) {
+  try {
+    const stub = env.SEAT_ROOM.get(env.SEAT_ROOM.idFromName(SEAT_ROOM_NAME));
+    await stub.fetch('https://seat-room/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'seats.changed', seat_id: seatId, reason, at: nowIso() }),
+    });
+  } catch (err) {
+    // 브로드캐스트 실패는 DB 상태에 영향을 주지 않는다. 클라이언트는 주기적 재조회로 복구한다.
+    console.error('broadcast_failed', seatId, reason, err);
+  }
+}
+
+/** GET /api/ws : 좌석 변경 알림 구독. ?role=device 는 장치 토큰 필요 */
+export async function handleWebSocket(ctx) {
+  const { request, env, url } = ctx;
+  if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
+    throw new HttpError(426, 'upgrade_required', 'WebSocket 업그레이드가 필요합니다.');
+  }
+
+  let role = 'viewer';
+  if (url.searchParams.get('role') === 'device') {
+    const device = await requireDevice(ctx);
+    role = 'device';
+    await logEvent(env, { source: 'device', eventType: 'device.ws_connected', actorType: 'device', actorId: device.deviceId });
+  }
+
+  const headers = new Headers(request.headers);
+  headers.set('X-Client-Role', role); // 클라이언트가 보낸 값을 덮어쓴다
+  const stub = env.SEAT_ROOM.get(env.SEAT_ROOM.idFromName(SEAT_ROOM_NAME));
+  return stub.fetch(new Request('https://seat-room/connect', { headers }));
+}

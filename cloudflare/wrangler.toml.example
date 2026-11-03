@@ -1,0 +1,46 @@
+# =====================================================================
+# Cloudflare Workers 설정 예시
+# 사용법: 이 파일을 wrangler.toml 로 복사한 뒤 <...> 값을 실제 값으로 바꾸세요.
+# wrangler.toml 은 .gitignore 대상입니다. 비밀 값은 이 파일에 쓰지 말고
+# `npx wrangler secret put DEVICE_TOKEN` 으로 등록하세요.
+# =====================================================================
+
+name = "library-seat-api"
+main = "workers/index.js"
+compatibility_date = "2025-09-01"
+
+[observability]
+enabled = true
+
+# ---- D1 데이터베이스 ----
+# 생성: npx wrangler d1 create library-seat-db   (실제 생성은 사용자가 직접 실행)
+[[d1_databases]]
+binding = "DB"
+database_name = "library-seat-db"
+database_id = "<YOUR_D1_DATABASE_ID>"
+migrations_dir = "database/migrations"
+
+# ---- Durable Objects (실시간 알림) ----
+[[durable_objects.bindings]]
+name = "SEAT_ROOM"
+class_name = "SeatRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SeatRoom"]
+
+# ---- Cron: 착석 기한이 지난 예약 만료 처리 (1분 간격) ----
+[triggers]
+crons = ["* * * * *"]
+
+# ---- 일반 변수 (비밀 아님) ----
+[vars]
+# 쉼표로 구분된 허용 Origin (Pages 도메인, 로컬 개발 서버)
+ALLOWED_ORIGINS = "http://localhost:5173"
+RESERVATION_HOLD_MINUTES = "15"
+SESSION_TTL_HOURS = "12"
+
+# ---- 비밀 값 (값은 여기에 쓰지 않음) ----
+# DEVICE_TOKEN : 라즈베리파이 에이전트 인증 토큰
+#   운영: npx wrangler secret put DEVICE_TOKEN
+#   로컬: cloudflare/.dev.vars 파일에 DEVICE_TOKEN=<임의의 긴 값>

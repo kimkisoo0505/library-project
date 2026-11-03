@@ -1,0 +1,38 @@
+# /etc/systemd/system/library-agent.service 로 복사하여 사용
+#   sudo cp systemd/library-agent.service.example /etc/systemd/system/library-agent.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now library-agent
+#   journalctl -u library-agent -f
+#
+# 비밀 값은 EnvironmentFile(.env, 권한 600)에만 둡니다.
+
+[Unit]
+Description=Library Seat System - Raspberry Pi hardware agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+SupplementaryGroups=dialout
+WorkingDirectory=/home/pi/library-project/raspberry-pi
+EnvironmentFile=/home/pi/library-project/raspberry-pi/.env
+ExecStart=/home/pi/library-project/raspberry-pi/.venv/bin/python -m agent.main
+Restart=on-failure
+RestartSec=5
+# 설정 오류(exit 2)는 재시작해도 해결되지 않으므로 재시작하지 않음
+RestartPreventExitStatus=2
+
+# 보안 강화 옵션
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pi/library-project/raspberry-pi/logs
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

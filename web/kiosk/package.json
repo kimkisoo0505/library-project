@@ -1,0 +1,15 @@
+{
+  "name": "library-kiosk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "도서관 좌석 관리 시스템 - 키오스크 및 관리자 웹 화면",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}

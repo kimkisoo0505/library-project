@@ -1,0 +1,47 @@
+# ===== 비밀 정보 =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.dev.vars
+.dev.vars.*
+secrets/
+cloudflare/wrangler.toml
+cloudflare/wrangler.jsonc
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# ===== Node / 프론트엔드 =====
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# ===== Cloudflare =====
+.wrangler/
+
+# ===== Arduino =====
+arduino/**/build/
+
+# ===== 로그 =====
+logs/
+*.log
+
+# ===== OS / 에디터 =====
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/

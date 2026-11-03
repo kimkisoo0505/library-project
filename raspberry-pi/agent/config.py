@@ -1,0 +1,157 @@
+"""환경 변수 기반 설정 로딩 및 검증."""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+PLACEHOLDER_TOKENS = frozenset({"changeme", "change-me", "your-device-token", "<device-token>", "token"})
+VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR"})
+
+
+class ConfigError(ValueError):
+    """설정 값이 없거나 올바르지 않을 때 발생한다."""
+
+
+@dataclass(frozen=True, slots=True)
+class AgentConfig:
+    api_base_url: str
+    ws_url: str
+    device_id: str
+    device_token: str = field(repr=False)
+    serial_port: str = "/dev/ttyACM0"
+    serial_baudrate: int = 115200
+    serial_reconnect_seconds: float = 5.0
+    heartbeat_seconds: float = 10.0
+    seat_sync_seconds: float = 60.0
+    seat_stale_seconds: float = 120.0
+    request_timeout_seconds: float = 5.0
+    log_dir: Path | None = None
+    log_level: str = "INFO"
+    servo_enabled: bool = False
+
+    def redacted(self) -> dict[str, Any]:
+        """로그 출력용: 비밀 값을 가린 설정 사본."""
+        return {
+            "api_base_url": self.api_base_url,
+            "ws_url": self.ws_url,
+            "device_id": self.device_id,
+            "device_token": "***",
+            "serial_port": self.serial_port,
+            "serial_baudrate": self.serial_baudrate,
+            "log_dir": str(self.log_dir) if self.log_dir else None,
+            "log_level": self.log_level,
+            "servo_enabled": self.servo_enabled,
+        }
+
+
+def _get_str(env: Mapping[str, str], key: str, default: str | None = None) -> str:
+    value = env.get(key)
+    if value is None or value.strip() == "":
+        if default is None:
+            raise ConfigError(f"필수 환경 변수 {key} 가 설정되지 않았습니다.")
+        return default
+    return value.strip()
+
+
+def _get_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
+    value = env.get(key)
+    if value is None or value.strip() == "":
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigError(f"{key} 값은 true/false 여야 합니다: {value!r}")
+
+
+def _get_number(env: Mapping[str, str], key: str, default: float, *, minimum: float, maximum: float) -> float:
+    value = env.get(key)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        number = float(value)
+    except ValueError as exc:
+        raise ConfigError(f"{key} 값은 숫자여야 합니다: {value!r}") from exc
+    if not minimum <= number <= maximum:
+        raise ConfigError(f"{key} 값은 {minimum}~{maximum} 범위여야 합니다: {number}")
+    return number
+
+
+def validate_http_url(url: str, key: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme == "https" and parsed.netloc:
+        return url.rstrip("/")
+    if parsed.scheme == "http" and parsed.hostname in LOCAL_HOSTS:
+        return url.rstrip("/")
+    raise ConfigError(f"{key} 는 https:// 주소여야 합니다 (로컬 개발용 http://localhost 만 예외): {url!r}")
+
+
+def derive_ws_url(api_base_url: str) -> str:
+    parsed = urlparse(api_base_url)
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    path = parsed.path.rstrip("/")
+    return f"{scheme}://{parsed.netloc}{path}/api/ws?role=device"
+
+
+def load_dotenv_file(path: Path) -> None:
+    """python-dotenv 가 설치되어 있으면 .env 파일을 읽는다 (이미 설정된 값은 덮어쓰지 않음)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    if path.is_file():
+        load_dotenv(path, override=False)
+
+
+def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
+    source: Mapping[str, str] = os.environ if env is None else env
+
+    api_base_url = validate_http_url(_get_str(source, "LIBRARY_API_BASE_URL"), "LIBRARY_API_BASE_URL")
+
+    ws_raw = source.get("LIBRARY_WS_URL", "").strip()
+    if ws_raw:
+        parsed = urlparse(ws_raw)
+        if not (parsed.scheme == "wss" or (parsed.scheme == "ws" and parsed.hostname in LOCAL_HOSTS)):
+            raise ConfigError("LIBRARY_WS_URL 은 wss:// 주소여야 합니다 (로컬 개발용 ws://localhost 만 예외).")
+        ws_url = ws_raw
+    else:
+        ws_url = derive_ws_url(api_base_url)
+
+    device_token = _get_str(source, "LIBRARY_DEVICE_TOKEN")
+    if device_token.lower() in PLACEHOLDER_TOKENS or len(device_token) < 16:
+        raise ConfigError("LIBRARY_DEVICE_TOKEN 이 예시 값이거나 너무 짧습니다 (16자 이상).")
+
+    log_level = _get_str(source, "LOG_LEVEL", "INFO").upper()
+    if log_level not in VALID_LOG_LEVELS:
+        raise ConfigError(f"LOG_LEVEL 값이 올바르지 않습니다: {log_level}")
+
+    log_dir_raw = source.get("LOG_DIR", "").strip()
+
+    servo_enabled = _get_bool(source, "SERVO_ENABLED", False)
+    if servo_enabled:
+        # 안전 규칙: 현재 단계에서는 서보 구동 기능을 제공하지 않는다.
+        raise ConfigError("SERVO_ENABLED=true 는 현재 단계에서 지원하지 않습니다. 서보 제어는 안전 검토 후 별도 단계에서 추가합니다.")
+
+    return AgentConfig(
+        api_base_url=api_base_url,
+        ws_url=ws_url,
+        device_id=_get_str(source, "LIBRARY_DEVICE_ID", "library-server"),
+        device_token=device_token,
+        serial_port=_get_str(source, "SERIAL_PORT", "/dev/ttyACM0"),
+        serial_baudrate=int(_get_number(source, "SERIAL_BAUDRATE", 115200, minimum=1200, maximum=1_000_000)),
+        serial_reconnect_seconds=_get_number(source, "SERIAL_RECONNECT_SECONDS", 5.0, minimum=0.5, maximum=300),
+        heartbeat_seconds=_get_number(source, "HEARTBEAT_SECONDS", 10.0, minimum=1, maximum=3600),
+        seat_sync_seconds=_get_number(source, "SEAT_SYNC_SECONDS", 60.0, minimum=5, maximum=3600),
+        seat_stale_seconds=_get_number(source, "SEAT_STALE_SECONDS", 120.0, minimum=10, maximum=86400),
+        request_timeout_seconds=_get_number(source, "REQUEST_TIMEOUT_SECONDS", 5.0, minimum=0.5, maximum=60),
+        log_dir=Path(log_dir_raw) if log_dir_raw else None,
+        log_level=log_level,
+        servo_enabled=servo_enabled,
+    )
