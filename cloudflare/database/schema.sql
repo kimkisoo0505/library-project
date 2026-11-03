@@ -36,13 +36,27 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS ix_sessions_subject ON sessions (subject_type, subject_id);
 
--- 좌석 (30석 고정). 점유 여부는 reservations에서 파생하며 여기에는 관리 상태만 저장
+-- 열람실 (0002_rooms 에서 추가: A/B/C)
+CREATE TABLE IF NOT EXISTS rooms (
+    id              INTEGER PRIMARY KEY,
+    code            TEXT    NOT NULL UNIQUE CHECK (length(code) = 1 AND code BETWEEN 'A' AND 'Z'),
+    name            TEXT    NOT NULL,
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- 좌석 (열람실별 30석, 전체 90석). id 는 전체에서 고유: A=1~30, B=31~60, C=61~90
+-- 점유 여부는 reservations에서 파생하며 여기에는 관리 상태만 저장
 CREATE TABLE IF NOT EXISTS seats (
-    id              INTEGER PRIMARY KEY CHECK (id BETWEEN 1 AND 30),
+    id              INTEGER PRIMARY KEY,
+    room_id         INTEGER NOT NULL REFERENCES rooms (id),
+    seat_no         INTEGER NOT NULL CHECK (seat_no >= 1),
     label           TEXT    NOT NULL UNIQUE,
     status          TEXT    NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'maintenance')),
-    updated_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    updated_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE (room_id, seat_no)
 );
+CREATE INDEX IF NOT EXISTS ix_seats_room ON seats (room_id, seat_no);
 
 -- 예약 및 이용 기록
 --   reserved  : 예약됨 (expires_at 이전에 착석 필요)
@@ -86,7 +100,15 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS ix_events_occurred ON events (occurred_at);
 CREATE INDEX IF NOT EXISTS ix_events_type ON events (event_type);
 
--- 좌석 30개 기본 데이터 (개인정보 아님)
-INSERT OR IGNORE INTO seats (id, label)
-WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 30)
-SELECT i, printf('A%02d', i) FROM n;
+-- 열람실 / 좌석 기본 데이터 (개인정보 아님): 3실 x 30석
+INSERT OR IGNORE INTO rooms (id, code, name, sort_order) VALUES
+    (1, 'A', '열람실 A', 1),
+    (2, 'B', '열람실 B', 2),
+    (3, 'C', '열람실 C', 3);
+
+INSERT OR IGNORE INTO seats (id, room_id, seat_no, label)
+WITH RECURSIVE
+    n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 30),
+    r(room_id, code) AS (VALUES (1, 'A'), (2, 'B'), (3, 'C'))
+SELECT (r.room_id - 1) * 30 + n.i, r.room_id, n.i, r.code || printf('%02d', n.i)
+  FROM r CROSS JOIN n;

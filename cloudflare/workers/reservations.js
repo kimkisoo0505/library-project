@@ -85,6 +85,8 @@ export async function handleCreateReservation(ctx) {
   }
 
   if (!row) {
+    const exists = await env.DB.prepare('SELECT 1 FROM seats WHERE id = ?1').bind(seatId).first();
+    if (!exists) throw new HttpError(404, 'seat_not_found', '존재하지 않는 좌석입니다.');
     throw new HttpError(409, 'seat_unavailable', '현재 예약할 수 없는 좌석입니다.');
   }
 
@@ -103,8 +105,11 @@ export async function handleCreateReservation(ctx) {
 export async function handleMyReservation(ctx) {
   const auth = await requireStudent(ctx);
   const row = await ctx.env.DB.prepare(
-    `SELECT r.id, r.seat_id, s.label AS seat_label, r.status, r.reserved_at, r.expires_at, r.checked_in_at
-       FROM reservations r JOIN seats s ON s.id = r.seat_id
+    `SELECT r.id, r.seat_id, s.label AS seat_label, rm.code AS room, rm.name AS room_name,
+            r.status, r.reserved_at, r.expires_at, r.checked_in_at
+       FROM reservations r
+       JOIN seats s ON s.id = r.seat_id
+       JOIN rooms rm ON rm.id = s.room_id
       WHERE r.student_id = ?1 AND r.status IN ('reserved', 'occupied')`,
   ).bind(auth.subjectId).first();
   return json({ reservation: row ?? null });

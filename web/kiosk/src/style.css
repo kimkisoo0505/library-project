@@ -47,6 +47,18 @@ h2 { font-size: 1.15rem; }
   padding: 16px;
 }
 
+.room-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.room-tab {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-height: 56px; padding: 8px 12px; font: inherit; cursor: pointer;
+  background: var(--bg); color: var(--text);
+  border: 2px solid var(--border); border-radius: var(--radius);
+}
+.room-tab:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.room-tab.is-active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.room-tab-name { font-weight: 700; }
+.room-tab-count { font-size: 0.85rem; opacity: 0.85; font-variant-numeric: tabular-nums; }
+
 .seat-map { display: grid; grid-template-columns: repeat(var(--columns, 6), minmax(0, 1fr)); gap: 10px; }
 .seat-map-empty { color: var(--muted); grid-column: 1 / -1; }
 

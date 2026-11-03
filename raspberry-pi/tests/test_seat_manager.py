@@ -4,7 +4,7 @@ from typing import Any
 
 from agent.cloud_client import CloudUnavailableError
 from agent.event_handler import EventHandler
-from agent.seat_manager import SeatManager, SeatState, SnapshotError
+from agent.seat_manager import TOTAL_SEATS, SeatManager, SeatState, SnapshotError, default_label
 from agent.serial_manager import SerialMessage
 
 logging.getLogger("agent").setLevel(logging.CRITICAL)
@@ -12,7 +12,11 @@ logging.getLogger("agent").setLevel(logging.CRITICAL)
 
 def full_snapshot(overrides: dict[int, str] | None = None) -> list[dict[str, Any]]:
     overrides = overrides or {}
-    return [{"id": i, "label": f"A{i:02d}", "state": overrides.get(i, "available")} for i in range(1, 31)]
+    seats = []
+    for i in range(1, TOTAL_SEATS + 1):
+        room, label = default_label(i)
+        seats.append({"id": i, "room": room, "label": label, "state": overrides.get(i, "available")})
+    return seats
 
 
 class FakeClock:
@@ -28,26 +32,36 @@ class SeatManagerTests(unittest.TestCase):
         self.clock = FakeClock()
         self.seats = SeatManager(stale_after_seconds=60, clock=self.clock)
 
+    def test_three_rooms_of_thirty_seats(self) -> None:
+        self.assertEqual(TOTAL_SEATS, 90)
+        for room in ("A", "B", "C"):
+            seats = self.seats.snapshot(room)
+            self.assertEqual(len(seats), 30, room)
+            self.assertEqual((seats[0]["label"], seats[-1]["label"]), (f"{room}01", f"{room}30"))
+        self.assertEqual(default_label(31), ("B", "B01"))
+        self.assertEqual(default_label(90), ("C", "C30"))
+
     def test_initial_state_is_unknown_and_blocked(self) -> None:
-        self.assertEqual(len(self.seats.snapshot()), 30)
+        self.assertEqual(len(self.seats.snapshot()), 90)
         self.assertTrue(all(s["state"] == "unknown" for s in self.seats.snapshot()))
         self.assertFalse(self.seats.can_forward_requests())
 
     def test_apply_snapshot_updates_states(self) -> None:
-        changed = self.seats.apply_snapshot(full_snapshot({3: "reserved", 7: "occupied"}))
-        self.assertEqual(changed, 30)
+        changed = self.seats.apply_snapshot(full_snapshot({3: "reserved", 45: "occupied"}))
+        self.assertEqual(changed, 90)
         self.assertIs(self.seats.get(3).state, SeatState.RESERVED)
-        self.assertIs(self.seats.get(7).state, SeatState.OCCUPIED)
-        self.assertEqual(self.seats.apply_snapshot(full_snapshot({3: "reserved", 7: "occupied"})), 0)
+        self.assertIs(self.seats.get(45).state, SeatState.OCCUPIED)
+        self.assertEqual((self.seats.get(45).room, self.seats.get(45).label), ("B", "B15"))
+        self.assertEqual(self.seats.apply_snapshot(full_snapshot({3: "reserved", 45: "occupied"})), 0)
 
     def test_invalid_snapshot_changes_nothing(self) -> None:
         self.seats.apply_snapshot(full_snapshot({1: "occupied"}))
         bad_cases = [
-            full_snapshot()[:29],                                   # 좌석 누락
-            full_snapshot() + [{"id": 31, "state": "available"}],   # 범위 초과
+            full_snapshot()[:-1],                                   # 좌석 누락
+            full_snapshot() + [{"id": 91, "state": "available"}],   # 범위 초과
             full_snapshot({2: "flying"}),                           # 알 수 없는 상태
             full_snapshot({2: "unknown"}),                          # unknown 금지
-            full_snapshot()[:29] + [{"id": 1, "state": "available"}],  # 중복
+            full_snapshot()[:-1] + [{"id": 1, "state": "available"}],  # 중복
         ]
         for bad in bad_cases:
             with self.subTest(bad=len(bad)), self.assertRaises(SnapshotError):

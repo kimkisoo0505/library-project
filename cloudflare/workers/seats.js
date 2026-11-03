@@ -9,26 +9,60 @@
 import { HttpError, json, readJson, nowIso, logEvent, parsePositiveInt } from './router.js';
 import { authenticate, requireAdmin, requireDevice } from './auth.js';
 
-export const TOTAL_SEATS = 30;
+// 실시간 알림 허브(Durable Object) 이름. 모든 열람실이 하나의 허브를 공유한다.
 export const SEAT_ROOM_NAME = 'reading-room-1';
+const MAX_SEAT_ID = 10_000;
 
+/** seat_id 는 전체 열람실에서 고유한 좌석 번호. 실제 존재 여부는 DB 조건문이 판단한다. */
 export function parseSeatId(value) {
   const seatId = parsePositiveInt(value, 'seat_id');
-  if (seatId > TOTAL_SEATS) throw new HttpError(400, 'invalid_parameter', 'seat_id 값이 범위를 벗어났습니다.');
+  if (seatId > MAX_SEAT_ID) throw new HttpError(400, 'invalid_parameter', 'seat_id 값이 범위를 벗어났습니다.');
   return seatId;
+}
+
+/** ?room=A 형식의 열람실 코드 (없으면 null = 전체) */
+export function parseRoomCode(url) {
+  const raw = url.searchParams.get('room');
+  if (raw == null || raw === '') return null;
+  const code = raw.trim().toUpperCase();
+  if (!/^[A-Z]$/.test(code)) throw new HttpError(400, 'invalid_parameter', 'room 값이 올바르지 않습니다.');
+  return code;
 }
 
 async function querySeats(env) {
   const { results } = await env.DB.prepare(
-    `SELECT s.id, s.label, s.status AS seat_status, s.updated_at,
+    `SELECT s.id, s.label, s.seat_no, s.status AS seat_status, s.updated_at,
+            rm.code AS room_code, rm.name AS room_name, rm.sort_order AS room_order,
             r.id AS reservation_id, r.student_id, r.status AS reservation_status,
             r.reserved_at, r.expires_at, r.checked_in_at
        FROM seats s
+       JOIN rooms rm ON rm.id = s.room_id
        LEFT JOIN reservations r
          ON r.seat_id = s.id AND r.status IN ('reserved', 'occupied')
-      ORDER BY s.id`,
+      ORDER BY rm.sort_order, s.seat_no`,
   ).all();
   return results;
+}
+
+/** 열람실별 요약 (전체 좌석 기준) */
+function summarizeRooms(rows) {
+  const rooms = new Map();
+  for (const row of rows) {
+    if (!rooms.has(row.room_code)) {
+      rooms.set(row.room_code, { code: row.room_code, name: row.room_name, total: 0, available: 0 });
+    }
+    const room = rooms.get(row.room_code);
+    room.total += 1;
+    if (seatState(row) === 'available') room.available += 1;
+  }
+  return [...rooms.values()];
+}
+
+function filterRoom(rows, roomCode) {
+  if (!roomCode) return rows;
+  const filtered = rows.filter((row) => row.room_code === roomCode);
+  if (filtered.length === 0) throw new HttpError(404, 'room_not_found', '존재하지 않는 열람실입니다.');
+  return filtered;
 }
 
 function seatState(row) {
@@ -39,7 +73,14 @@ function seatState(row) {
 /** 공개용: 다른 학생의 식별 정보는 포함하지 않는다. */
 function toPublicSeat(row, viewerStudentId) {
   const mine = viewerStudentId != null && row.student_id === viewerStudentId;
-  const seat = { id: row.id, label: row.label, state: seatState(row), mine };
+  const seat = {
+    id: row.id,
+    room: row.room_code,
+    seat_no: row.seat_no,
+    label: row.label,
+    state: seatState(row),
+    mine,
+  };
   if (mine) {
     seat.reservation_id = row.reservation_id;
     seat.expires_at = row.expires_at;
@@ -47,7 +88,8 @@ function toPublicSeat(row, viewerStudentId) {
   return seat;
 }
 
-export async function handleListSeats({ request, env }) {
+export async function handleListSeats({ request, env, url }) {
+  const roomCode = parseRoomCode(url);
   let viewer = null;
   if (request.headers.get('Authorization')) {
     try {
@@ -57,15 +99,23 @@ export async function handleListSeats({ request, env }) {
     }
   }
   const rows = await querySeats(env);
-  return json({ seats: rows.map((row) => toPublicSeat(row, viewer?.subjectId)), generated_at: nowIso() });
+  return json({
+    rooms: summarizeRooms(rows),
+    seats: filterRoom(rows, roomCode).map((row) => toPublicSeat(row, viewer?.subjectId)),
+    generated_at: nowIso(),
+  });
 }
 
 export async function handleAdminListSeats(ctx) {
   await requireAdmin(ctx);
+  const roomCode = parseRoomCode(ctx.url);
   const rows = await querySeats(ctx.env);
   return json({
-    seats: rows.map((row) => ({
+    rooms: summarizeRooms(rows),
+    seats: filterRoom(rows, roomCode).map((row) => ({
       id: row.id,
+      room: row.room_code,
+      seat_no: row.seat_no,
       label: row.label,
       state: seatState(row),
       seat_status: row.seat_status,
@@ -107,6 +157,8 @@ export async function handleAdminSetSeatStatus(ctx) {
   ).bind(status, nowIso(), seatId).first();
 
   if (!updated) {
+    const exists = await ctx.env.DB.prepare('SELECT 1 FROM seats WHERE id = ?1').bind(seatId).first();
+    if (!exists) throw new HttpError(404, 'seat_not_found', '존재하지 않는 좌석입니다.');
     throw new HttpError(409, 'seat_in_use', '활성 예약이 있는 좌석은 점검 상태로 바꿀 수 없습니다.');
   }
 

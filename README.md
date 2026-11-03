@@ -1,10 +1,14 @@
 # 도서관 좌석 관리 시스템
 
-30석 규모 도서관 열람실의 좌석 예약·착석·퇴실을 관리하는 시스템입니다.
+도서관 열람실 3곳(A·B·C, 각 30석, 총 90석)의 좌석 예약·착석·퇴실을 관리하는 시스템입니다.
 웹 키오스크, Cloudflare 기반 클라우드 백엔드, 현장 라즈베리파이 에이전트, Arduino 컨트롤러로 구성됩니다.
 
-> 현재 단계: **초기 프로젝트 구조(스캐폴딩)**. 각 구성요소의 기본 골격만 구현되어 있으며
-> 실제 배포·하드웨어 구동은 하지 않습니다. 구현 현황은 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)를 참고하세요.
+> **운영 중**
+> - 키오스크: https://library-kiosk.kimkisoo0505.workers.dev (관리자: `/#/admin`)
+> - API: https://library-seat-api.kimkisoo0505.workers.dev/api/health
+>
+> `main` 브랜치에 push하면 GitHub Actions가 자동 배포합니다. 라즈베리파이·Arduino 연동과 서보모터는 아직 구현 전입니다.
+> 구현 현황은 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)를 참고하세요.
 
 ## 구성
 

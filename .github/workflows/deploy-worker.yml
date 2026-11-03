@@ -63,16 +63,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      - name: SQL schema check
-        run: |
-          python3 - <<'PY'
-          import sqlite3
-          db = sqlite3.connect(':memory:')
-          db.executescript(open('database/schema.sql', encoding='utf-8').read())
-          count = db.execute('select count(*) from seats').fetchone()[0]
-          assert count == 30, f'seats={count}'
-          print('schema ok, seats =', count)
-          PY
+      # 마이그레이션 순차 적용(기존 예약 존재 상태) == schema.sql 구조, 3실 x 30석, 중복 예약 방지
+      - name: SQL schema and migration check
+        run: python3 tests/check_schema.py
 
       - name: Build (dry run)
         run: |

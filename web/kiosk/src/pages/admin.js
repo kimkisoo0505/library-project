@@ -2,6 +2,9 @@ import { api, ApiError, session } from '../api.js';
 import { SeatSocket } from '../websocket.js';
 import { createLoginForm } from '../components/login-form.js';
 import { STATE_LABELS } from '../components/seat-card.js';
+import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
+
+const ROOM_PREF_KEY = 'library.admin.room';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -18,7 +21,14 @@ function formatDateTime(iso) {
 
 /** 관리자 화면: 학생 세션과 분리된 관리자 세션을 사용한다. */
 export function renderAdmin(root) {
-  const state = { admin: null, seats: [], events: [], busy: false };
+  const state = { admin: null, rooms: [], seats: [], events: [], busy: false, room: roomPreference.load(ROOM_PREF_KEY) || 'A' };
+  const roomTabs = createRoomTabs({
+    onSelect: (code) => {
+      state.room = code;
+      roomPreference.save(ROOM_PREF_KEY, code);
+      render();
+    },
+  });
 
   const header = el('header', 'page-header');
   const title = el('h1', null, '관리자');
@@ -62,8 +72,10 @@ export function renderAdmin(root) {
     if (!state.admin) { render(); return; }
     try {
       const [seats, events] = await Promise.all([api.adminListSeats(), api.adminEvents(50)]);
+      state.rooms = seats.rooms ?? [];
       state.seats = seats.seats;
       state.events = events.events;
+      if (!state.rooms.some((r) => r.code === state.room) && state.rooms.length) state.room = state.rooms[0].code;
     } catch (err) {
       await handleError(err);
     }
@@ -102,7 +114,7 @@ export function renderAdmin(root) {
     table.append(thead);
     const body = el('tbody');
 
-    for (const seat of state.seats) {
+    for (const seat of state.seats.filter((s) => s.room === state.room)) {
       const row = el('tr');
       const r = seat.reservation;
       row.append(
@@ -136,7 +148,8 @@ export function renderAdmin(root) {
     const list = el('ol', 'event-list');
     for (const e of state.events) {
       const item = el('li');
-      const seat = e.seat_id ? ` · 좌석 ${e.seat_id}` : '';
+      const seatLabel = state.seats.find((s) => s.id === e.seat_id)?.label;
+      const seat = e.seat_id ? ` · 좌석 ${seatLabel ?? e.seat_id}` : '';
       item.append(
         el('time', null, formatDateTime(e.occurred_at)),
         el('span', 'event-type', e.event_type),
@@ -166,7 +179,8 @@ export function renderAdmin(root) {
     );
 
     const seatSection = el('section', 'card');
-    seatSection.append(el('h2', null, '좌석 관리'), renderSeatTable());
+    roomTabs.update(state.rooms, state.room);
+    seatSection.append(el('h2', null, '좌석 관리'), roomTabs.element, renderSeatTable());
     const eventSection = el('section', 'card');
     eventSection.append(el('h2', null, '최근 이벤트 (50건)'), button('새로고침', 'btn-ghost', refresh), renderEvents());
     content.append(seatSection, eventSection);

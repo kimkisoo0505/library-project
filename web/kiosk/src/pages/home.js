@@ -3,6 +3,9 @@ import { SeatSocket } from '../websocket.js';
 import { createLoginForm } from '../components/login-form.js';
 import { createSeatMap } from '../components/seat-map.js';
 import { STATE_LABELS } from '../components/seat-card.js';
+import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
+
+const ROOM_PREF_KEY = 'library.kiosk.room';
 
 const IDLE_LOGOUT_MS = 90_000;      // 공용 키오스크: 일정 시간 입력이 없으면 자동 로그아웃
 const FALLBACK_POLL_MS = 30_000;    // WebSocket이 끊겼을 때 주기적 재조회
@@ -22,7 +25,19 @@ function formatTime(iso) {
 
 /** 학생용 키오스크 화면 */
 export function renderHome(root) {
-  const state = { seats: [], user: null, selectedSeatId: null, busy: false, live: false, loadFailed: false };
+  const state = {
+    rooms: [],
+    seats: [],          // 전체 열람실 좌석 (내 좌석이 다른 열람실에 있어도 찾을 수 있도록)
+    room: roomPreference.load(ROOM_PREF_KEY) || 'A',
+    user: null,
+    selectedSeatId: null,
+    busy: false,
+    live: false,
+    loadFailed: false,
+  };
+
+  const roomName = (code) => state.rooms.find((r) => r.code === code)?.name ?? `열람실 ${code}`;
+  const seatsInRoom = () => state.seats.filter((s) => s.room === state.room);
 
   // ----- 레이아웃 -----
   const header = el('header', 'page-header');
@@ -43,8 +58,9 @@ export function renderHome(root) {
     const item = el('li', `legend-item seat-${key}`, STATE_LABELS[key]);
     legend.append(item);
   }
+  const roomTabs = createRoomTabs({ onSelect: selectRoom });
   const mapSection = el('section', 'map-section');
-  mapSection.append(seatMap.element, legend);
+  mapSection.append(roomTabs.element, seatMap.element, legend);
   main.append(mapSection, panel);
 
   const footer = el('footer', 'page-footer');
@@ -80,13 +96,32 @@ export function renderHome(root) {
     renderPanel();
   }
 
+  function renderMap() {
+    roomTabs.update(state.rooms, state.room);
+    seatMap.update(seatsInRoom());
+    seatMap.setSelected(state.selectedSeatId);
+  }
+
+  function selectRoom(code) {
+    if (code === state.room) return;
+    state.room = code;
+    state.selectedSeatId = null;
+    roomPreference.save(ROOM_PREF_KEY, code);
+    renderMap();
+    renderPanel();
+  }
+
   async function loadSeats() {
     try {
       const data = await api.listSeats();
+      state.rooms = data.rooms ?? [];
       state.seats = data.seats;
       state.loadFailed = false;
-      seatMap.update(state.seats);
-      seatMap.setSelected(state.selectedSeatId);
+      if (!state.rooms.some((r) => r.code === state.room) && state.rooms.length) {
+        state.room = state.rooms[0].code;
+      }
+      if (!seatsInRoom().some((s) => s.id === state.selectedSeatId)) state.selectedSeatId = null;
+      renderMap();
     } catch (err) {
       state.loadFailed = true;
       showMessage(err.message, 'error');
@@ -163,7 +198,10 @@ export function renderHome(root) {
     const mine = state.seats.find((s) => s.mine);
     if (mine) {
       const box = el('div', 'my-seat');
-      box.append(el('h2', null, `내 좌석: ${mine.label}`), el('p', null, STATE_LABELS[mine.state] ?? ''));
+      box.append(el('h2', null, `내 좌석: ${roomName(mine.room)} ${mine.label}`), el('p', null, STATE_LABELS[mine.state] ?? ''));
+      if (mine.room !== state.room) {
+        box.append(actionButton(`${roomName(mine.room)} 보기`, 'btn-ghost', () => selectRoom(mine.room)));
+      }
       if (mine.state === 'reserved') {
         box.append(
           el('p', 'hint', `${formatTime(mine.expires_at)}까지 착석하지 않으면 예약이 자동 취소됩니다.`),
@@ -184,13 +222,13 @@ export function renderHome(root) {
     }
 
     const box = el('div', 'selected-seat');
-    box.append(el('h2', null, `선택한 좌석: ${selected.label}`), el('p', null, STATE_LABELS[selected.state] ?? ''));
+    box.append(el('h2', null, `선택한 좌석: ${roomName(selected.room)} ${selected.label}`), el('p', null, STATE_LABELS[selected.state] ?? ''));
     // 네트워크가 불안정하면 예약 버튼을 막는다. 최종 승인은 항상 서버 응답으로만 판단한다.
     const offline = state.loadFailed || !navigator.onLine;
     const reserveButton = actionButton(
       '이 좌석 예약',
       'btn-primary',
-      () => runAction(() => api.createReservation(selected.id), `${selected.label} 좌석이 예약되었습니다.`),
+      () => runAction(() => api.createReservation(selected.id), `${roomName(selected.room)} ${selected.label} 좌석이 예약되었습니다.`),
       selected.state !== 'available' || offline,
     );
     box.append(reserveButton);

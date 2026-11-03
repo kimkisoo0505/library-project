@@ -58,12 +58,19 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 
 ## 3. 좌석
 
-### `GET /seats` — 좌석 현황 (인증 선택)
+### `GET /seats?room=A` — 좌석 현황 (인증 선택)
+`room`(선택): `A` / `B` / `C`. 생략하면 전체 90석. 없는 열람실 `404 room_not_found`, 형식 오류 `400`.
+`rooms`는 필터와 관계없이 항상 전체 열람실 요약입니다.
 ```json
 {
+  "rooms": [
+    { "code": "A", "name": "열람실 A", "total": 30, "available": 28 },
+    { "code": "B", "name": "열람실 B", "total": 30, "available": 30 },
+    { "code": "C", "name": "열람실 C", "total": 30, "available": 30 }
+  ],
   "seats": [
-    { "id": 1, "label": "A01", "state": "available", "mine": false },
-    { "id": 2, "label": "A02", "state": "reserved", "mine": true, "reservation_id": 10, "expires_at": "..." }
+    { "id": 1, "room": "A", "seat_no": 1, "label": "A01", "state": "available", "mine": false },
+    { "id": 2, "room": "A", "seat_no": 2, "label": "A02", "state": "reserved", "mine": true, "reservation_id": 10, "expires_at": "..." }
   ],
   "generated_at": "..."
 }
@@ -75,15 +82,16 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 
 | 메서드 | 경로 | 설명 | 상태 전이 |
 |---|---|---|---|
-| POST | `/reservations` | 예약 생성 `{ "seat_id": 3 }` → 201 | (없음) → reserved |
-| GET | `/reservations/me` | 내 활성 예약 (`reservation: null` 가능) | — |
+| POST | `/reservations` | 예약 생성 `{ "seat_id": 35 }` (전체 고유 좌석 id, 35 = B05) → 201 | (없음) → reserved |
+| GET | `/reservations/me` | 내 활성 예약 (`room`, `room_name`, `seat_label` 포함, `reservation: null` 가능) | — |
 | DELETE | `/reservations/:id` | 예약 취소 | reserved → cancelled |
 | POST | `/reservations/:id/check-in` | 착석 (기한 내) | reserved → occupied |
 | POST | `/reservations/:id/check-out` | 퇴실 | occupied → completed |
 
 예약 생성 오류:
 - `409 seat_already_reserved` — 다른 사용자가 먼저 예약
-- `409 student_has_active_reservation` — 이미 활성 예약 보유 (1인 1좌석)
+- `409 student_has_active_reservation` — 이미 활성 예약 보유 (1인 1좌석, **열람실 전체 기준**)
+- `404 seat_not_found` — 존재하지 않는 좌석
 - `409 seat_unavailable` — 점검 중인 좌석
 
 상태 전이 오류: `409 invalid_reservation_state`
@@ -94,7 +102,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| GET | `/admin/seats` | 좌석 + 활성 예약 상세 |
+| GET | `/admin/seats?room=A` | 열람실 요약 + 좌석 + 활성 예약 상세 (`room` 생략 시 전체) |
 | POST | `/admin/seats/:id/status` | `{ "status": "maintenance" \| "available", "reason": "..." }` 활성 예약이 있으면 `409 seat_in_use` |
 | POST | `/admin/reservations/:id/release` | 활성 예약 강제 해제 `{ "reason": "..." }` (사유 필수) |
 | GET | `/admin/events?limit=50&before_id=` | 이벤트 로그 최신순 (limit 1~200) |

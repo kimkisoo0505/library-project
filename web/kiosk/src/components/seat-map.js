@@ -1,7 +1,7 @@
 import { createSeatCard } from './seat-card.js';
 
 /**
- * 30석 좌석 배치도 (기본 6열 x 5행).
+ * 열람실 하나의 좌석 배치도 (30석 기준 6열 x 5행).
  * 실제 열람실 배치가 확정되면 columns 또는 좌석별 위치 정보를 반영한다.
  */
 export function createSeatMap({ onSelect, columns = 6 } = {}) {

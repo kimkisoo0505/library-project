@@ -16,7 +16,17 @@ from typing import Any
 
 from .logger import get_logger, log_event
 
-TOTAL_SEATS = 30
+# 열람실 A/B/C x 30석. 좌석 id 는 전체에서 고유하다 (A=1~30, B=31~60, C=61~90).
+ROOM_CODES = ("A", "B", "C")
+SEATS_PER_ROOM = 30
+TOTAL_SEATS = len(ROOM_CODES) * SEATS_PER_ROOM
+
+
+def default_label(seat_id: int) -> tuple[str, str]:
+    """스냅샷을 받기 전 표시용 기본 (열람실, 라벨)."""
+    index = (seat_id - 1) // SEATS_PER_ROOM
+    room = ROOM_CODES[index] if index < len(ROOM_CODES) else "?"
+    return room, f"{room}{(seat_id - 1) % SEATS_PER_ROOM + 1:02d}"
 
 
 class SeatState(StrEnum):
@@ -30,6 +40,7 @@ class SeatState(StrEnum):
 @dataclass(slots=True)
 class Seat:
     seat_id: int
+    room: str
     label: str
     state: SeatState = SeatState.UNKNOWN
 
@@ -48,7 +59,7 @@ class SeatManager:
         self._total = total_seats
         self._stale_after = stale_after_seconds
         self._clock = clock
-        self._seats: dict[int, Seat] = {i: Seat(i, f"A{i:02d}") for i in range(1, total_seats + 1)}
+        self._seats: dict[int, Seat] = {i: Seat(i, *default_label(i)) for i in range(1, total_seats + 1)}
         self._cloud_online = False
         self._last_sync: float | None = None
         self._log = get_logger("seats")
@@ -67,12 +78,14 @@ class SeatManager:
         Returns:
             상태가 바뀐 좌석 수
         """
-        parsed: dict[int, tuple[str, SeatState]] = {}
+        parsed: dict[int, tuple[str, str, SeatState]] = {}
         for item in seats:
             try:
                 seat_id = int(item["id"])
                 state = SeatState(str(item["state"]))
-                label = str(item.get("label") or f"A{seat_id:02d}")
+                fallback_room, fallback_label = default_label(seat_id)
+                room = str(item.get("room") or fallback_room)
+                label = str(item.get("label") or fallback_label)
             except (KeyError, TypeError, ValueError) as exc:
                 raise SnapshotError(f"좌석 항목 형식 오류: {item!r}") from exc
             if not 1 <= seat_id <= self._total:
@@ -81,17 +94,18 @@ class SeatManager:
                 raise SnapshotError("클라우드 스냅샷에 unknown 상태가 포함될 수 없습니다")
             if seat_id in parsed:
                 raise SnapshotError(f"중복 좌석 번호: {seat_id}")
-            parsed[seat_id] = (label, state)
+            parsed[seat_id] = (room, label, state)
 
         if len(parsed) != self._total:
             raise SnapshotError(f"스냅샷 좌석 수 불일치: {len(parsed)}/{self._total}")
 
         changed = 0
-        for seat_id, (label, state) in parsed.items():
+        for seat_id, (room, label, state) in parsed.items():
             seat = self._seats[seat_id]
-            if seat.state is not state or seat.label != label:
+            if seat.state is not state or seat.label != label or seat.room != room:
                 changed += 1
             seat.state = state
+            seat.room = room
             seat.label = label
         self._last_sync = self._clock()
         log_event(self._log, "seats.snapshot_applied", "좌석 스냅샷 적용", changed=changed)
@@ -126,5 +140,9 @@ class SeatManager:
     def get(self, seat_id: int) -> Seat:
         return replace(self._seats[seat_id])
 
-    def snapshot(self) -> list[dict[str, Any]]:
-        return [{**asdict(seat), "state": seat.state.value} for seat in self._seats.values()]
+    def snapshot(self, room: str | None = None) -> list[dict[str, Any]]:
+        return [
+            {**asdict(seat), "state": seat.state.value}
+            for seat in self._seats.values()
+            if room is None or seat.room == room
+        ]

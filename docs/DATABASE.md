@@ -8,9 +8,9 @@
 ## ER 개요
 
 ```
-students 1 ──< reservations >── 1 seats
-    │                                │
-    └── sessions (subject_type='student')
+rooms 1 ──< seats 1 ──< reservations >── 1 students
+                                              │
+                                              └── sessions (subject_type='student')
 admins ──── sessions (subject_type='admin')
 events (seat_id, reservation_id, actor_* 로 느슨하게 참조)
 ```
@@ -40,12 +40,31 @@ events (seat_id, reservation_id, actor_* 로 느슨하게 참조)
 | subject_id | students.id 또는 admins.id |
 | expires_at / revoked_at | 만료 및 로그아웃 |
 
-### seats — 좌석 (30석)
+### rooms — 열람실 (0002_rooms)
 | 컬럼 | 설명 |
 |---|---|
-| id | 1~30 (CHECK 제약) |
-| label | `A01` ~ `A30` |
+| id | 1, 2, 3 |
+| code | `A` / `B` / `C` (대문자 한 글자) |
+| name | `열람실 A` 등 화면 표시 이름 |
+| sort_order | 표시 순서 |
+
+### seats — 좌석 (3실 × 30석 = 90석)
+| 컬럼 | 설명 |
+|---|---|
+| id | **전체에서 고유한 좌석 번호**. A=1~30, B=31~60, C=61~90. 예약 API의 `seat_id` |
+| room_id | rooms.id |
+| seat_no | 열람실 안의 좌석 번호 1~30 (`UNIQUE(room_id, seat_no)`) |
+| label | `A01`~`A30`, `B01`~`B30`, `C01`~`C30` (UNIQUE) |
 | status | `available` / `maintenance` — **관리 상태만** 저장 |
+
+**1인 1좌석은 열람실 전체 기준**입니다. 열람실 A에 예약이 있으면 B·C에도 예약할 수 없습니다.
+
+#### 0002_rooms 마이그레이션 주의
+`seats.id`의 `CHECK (id BETWEEN 1 AND 30)`을 없애기 위해 테이블을 재생성합니다. `reservations`가 `seats`를 참조하므로
+**백업 → 원본 DROP → 새 테이블 RENAME → 백업에서 INSERT** 순서로 해야 합니다. 복사 후 DROP/RENAME 하면
+지연된 외래 키 위반이 해소되지 않아 커밋이 실패합니다(기존 예약이 있는 상태에서 재현 확인).
+기존 30석은 id를 유지한 채 열람실 A가 되므로 예약 이력이 그대로 보존됩니다.
+검증: `python cloudflare/tests/check_schema.py` (CI에서도 실행)
 
 점유 상태(예약/착석)는 seats에 중복 저장하지 않고 `reservations`의 활성 행에서 파생합니다. 두 곳에 상태를 두지 않아 불일치가 생기지 않습니다.
 
