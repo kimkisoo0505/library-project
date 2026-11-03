@@ -11,7 +11,7 @@
 
 | 영역 | 스택 | 비고 |
 |---|---|---|
-| 프론트엔드 | Vite + Vanilla JS (ES Modules) | `web/kiosk`, 프레임워크 없음 |
+| 프론트엔드 | Vite + Vanilla JS (ES Modules) | `web/kiosk`, 프레임워크 없음. Workers Static Assets(`library-kiosk`, 구 Pages)로 배포 |
 | 백엔드 | Cloudflare Workers (ES Module 문법) | `cloudflare/workers` |
 | DB | Cloudflare D1 (SQLite) | `cloudflare/database` |
 | 실시간 | Durable Objects + WebSocket Hibernation API | `SeatRoom` 클래스 |
@@ -43,7 +43,8 @@ scripts/         개발 PC / 라즈베리파이 환경 점검 스크립트
 10. **중요 이벤트는 모두 로그로 남긴다.** 서버는 `events` 테이블, 에이전트는 JSON 로그 파일(`logger.log_event`). 로그에 비밀번호·토큰을 기록하지 않는다.
 11. **라즈베리파이는 외부 발신 연결만 사용한다.** 포트포워딩이나 인바운드 서버를 열지 않는다.
 12. **실제 Cloudflare 배포, 원격 리소스 생성, 하드웨어 구동은 사용자가 명시적으로 요청했을 때만** 수행한다.
-13. **`main` 브랜치 push = 운영 배포다.** `cloudflare/**` 변경이 `main`에 push되면 GitHub Actions(`.github/workflows/deploy-worker.yml`)가 원격 D1 마이그레이션 적용과 Worker 배포를 자동 수행한다. 따라서 push는 사용자가 요청했을 때만 하고, push 전에 로컬 검사(`npm run check`, 테스트)를 통과시킨다. 이미 적용된 마이그레이션 파일은 절대 수정하지 않는다.
+13. **`main` 브랜치 push = 운영 배포다.** `cloudflare/**`(API) 또는 `web/kiosk/**`(키오스크, `deploy-kiosk.yml`) 변경이 `main`에 push되면 GitHub Actions(`.github/workflows/deploy-worker.yml`)가 원격 D1 마이그레이션 적용과 Worker 배포를 자동 수행한다. 따라서 push는 사용자가 요청했을 때만 하고, push 전에 로컬 검사(`npm run check`, 테스트)를 통과시킨다. 이미 적용된 마이그레이션 파일은 절대 수정하지 않는다.
+14. **wrangler 명령은 반드시 해당 설정 파일이 있는 폴더에서 실행한다.** API는 `cloudflare/`, 키오스크는 `web/kiosk/`. 다른 폴더에서 실행하면 그 폴더의 `wrangler.toml`이 읽혀 엉뚱한 Worker가 배포된다. 실제 배포 전에 `--dry-run`으로 바인딩을 확인한다.
 
 ## 코딩 규칙
 

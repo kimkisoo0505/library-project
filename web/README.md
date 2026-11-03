@@ -1,6 +1,13 @@
 # web — 키오스크 및 관리자 화면
 
-`web/kiosk`는 Vite 기반의 Vanilla JS 프론트엔드이며 Cloudflare Pages로 배포할 예정입니다.
+`web/kiosk`는 Vite 기반의 Vanilla JS 프론트엔드입니다.
+
+- 운영 주소: **https://library-kiosk.kimkisoo0505.workers.dev** (관리자: `/#/admin`)
+- 배포 방식: Cloudflare Workers Static Assets (Pages가 Workers로 통합된 최신 방식). 코드 없이 `dist/`만 올리는 별도 Worker `library-kiosk`이며, API 서버(`library-seat-api`)와 분리되어 있습니다.
+- 자동 배포: `web/kiosk/**` 변경이 `main`에 push되면 [deploy-kiosk.yml](../.github/workflows/deploy-kiosk.yml) 실행
+- 수동 배포: `cd web\kiosk; npm run deploy` (**반드시 web/kiosk 폴더에서 실행** — 다른 폴더의 wrangler.toml이 읽히면 엉뚱한 Worker가 배포됨)
+- 운영 API 주소는 [.env.production](kiosk/.env.production)에 있고, API의 `ALLOWED_ORIGINS`에 키오스크 주소가 등록되어 있어야 합니다.
+- 보안 헤더(CSP 등): [public/_headers](kiosk/public/_headers)
 
 ## 화면
 

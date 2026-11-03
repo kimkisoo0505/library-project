@@ -36,7 +36,7 @@ crons = ["* * * * *"]
 # ---- 일반 변수 (비밀 아님) ----
 [vars]
 # 쉼표로 구분된 허용 Origin (Pages 도메인, 로컬 개발 서버)
-ALLOWED_ORIGINS = "http://localhost:5173"
+ALLOWED_ORIGINS = "https://library-kiosk.kimkisoo0505.workers.dev,http://localhost:5173"
 RESERVATION_HOLD_MINUTES = "15"
 SESSION_TTL_HOURS = "12"
 

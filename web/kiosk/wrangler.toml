@@ -1,0 +1,11 @@
+# 키오스크 정적 사이트 배포 설정 (Cloudflare Workers Static Assets, 구 Pages)
+# - 코드 없이 Vite 빌드 결과(dist/)만 배포한다. DB 등 바인딩 없음 → 비밀 값 없음, 커밋 가능
+# - 반드시 web/kiosk 디렉터리에서 실행: npm run deploy
+# - API 서버(library-seat-api)와 분리되어 있으며 API 주소는 .env.production 에 있다
+
+name = "library-kiosk"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
