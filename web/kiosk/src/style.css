@@ -91,6 +91,38 @@ h2 { font-size: 1.15rem; }
 .form-error { color: var(--danger); min-height: 1.2em; margin: 0; font-size: 0.9rem; }
 .hint { color: var(--muted); font-size: 0.9rem; }
 
+/* ----- 중앙도서관 · 금화도서관 공석 ----- */
+.central-library { margin-top: 16px; }
+.cl-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.cl-header h2 { margin: 0; }
+.cl-body { display: grid; gap: 10px; margin-top: 12px; }
+.cl-warning { margin: 0; color: var(--reserved); font-size: 0.9rem; }
+.cl-source { margin: 12px 0 0; font-size: 0.8rem; }
+.cl-campus { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.cl-campus-summary {
+  display: grid; grid-template-columns: auto auto minmax(60px, 1fr) auto auto; align-items: center; gap: 10px;
+  padding: 12px 14px; cursor: pointer; list-style: none; min-height: 48px;
+}
+.cl-campus-summary::-webkit-details-marker { display: none; }
+.cl-campus-summary::after { content: '▾'; color: var(--muted); transition: transform 0.15s; }
+.cl-campus[open] .cl-campus-summary::after { transform: rotate(180deg); }
+.cl-campus-summary:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; border-radius: var(--radius); }
+.cl-campus-name { font-weight: 700; }
+.cl-campus-sub { color: var(--muted); font-size: 0.85rem; }
+.cl-campus-count, .cl-room-count { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.9rem; }
+.cl-hours { margin: 0 14px 6px; font-size: 0.8rem; }
+.cl-room-list { list-style: none; margin: 0; padding: 0 14px 12px; display: grid; gap: 6px; }
+.cl-room { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(50px, 1fr) auto; align-items: center; gap: 10px; font-size: 0.85rem; }
+.cl-room-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-meter { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.cl-meter-fill { display: block; height: 100%; background: var(--available); border-radius: 999px; }
+.cl-meter-fill.is-low { background: var(--reserved); }
+.cl-meter-fill.is-full { background: var(--danger); }
+@media (max-width: 520px) {
+  .cl-campus-summary { grid-template-columns: auto 1fr auto auto; }
+  .cl-campus-summary .cl-meter { grid-column: 1 / -1; grid-row: 2; }
+}
+
 .test-accounts {
   margin-top: 16px; padding: 12px;
   border: 1px dashed var(--reserved); border-radius: var(--radius); background: #fffbeb;

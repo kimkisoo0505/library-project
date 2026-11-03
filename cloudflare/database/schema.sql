@@ -100,6 +100,15 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS ix_events_occurred ON events (occurred_at);
 CREATE INDEX IF NOT EXISTS ix_events_type ON events (event_type);
 
+-- 외부 데이터 캐시 (0003_external_snapshots): 경기대 중앙/금화도서관 공석 현황
+CREATE TABLE IF NOT EXISTS external_snapshots (
+    source          TEXT    PRIMARY KEY,
+    payload         TEXT,
+    fetched_at      TEXT,
+    attempted_at    TEXT    NOT NULL,
+    last_error      TEXT
+);
+
 -- 열람실 / 좌석 기본 데이터 (개인정보 아님): 3실 x 30석
 INSERT OR IGNORE INTO rooms (id, code, name, sort_order) VALUES
     (1, 'A', '열람실 A', 1),

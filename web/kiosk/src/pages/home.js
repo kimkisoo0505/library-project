@@ -5,6 +5,9 @@ import { createSeatMap } from '../components/seat-map.js';
 import { STATE_LABELS } from '../components/seat-card.js';
 import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
 import { TEST_STUDENTS } from '../test-accounts.js';
+import { createCentralLibraryPanel } from '../components/central-library.js';
+
+const CENTRAL_LIBRARY_POLL_MS = 60_000;
 
 const ROOM_PREF_KEY = 'library.kiosk.room';
 
@@ -69,7 +72,18 @@ export function renderHome(root) {
   adminLink.href = '#/admin';
   footer.append(adminLink);
 
-  root.append(header, message, main, footer);
+  const centralLibrary = createCentralLibraryPanel();
+
+  root.append(header, message, main, centralLibrary.element, footer);
+
+  // 중앙/금화도서관 공석 (예약 기능과 독립: 실패해도 다른 화면에 영향 없음)
+  async function loadCentralLibrary() {
+    try {
+      centralLibrary.update(await api.centralLibrary());
+    } catch {
+      centralLibrary.showError();
+    }
+  }
 
   const loginForm = createLoginForm({
     title: '학생 로그인',
@@ -295,12 +309,15 @@ export function renderHome(root) {
   });
   socket.connect();
   const pollTimer = setInterval(() => { if (!state.live) loadSeats(); }, FALLBACK_POLL_MS);
+  loadCentralLibrary();
+  const centralTimer = setInterval(() => { if (!document.hidden) loadCentralLibrary(); }, CENTRAL_LIBRARY_POLL_MS);
 
   restoreUser().then(() => { resetIdleTimer(); return loadSeats(); });
 
   return () => {
     socket.close();
     clearInterval(pollTimer);
+    clearInterval(centralTimer);
     clearTimeout(idleTimer);
     activityEvents.forEach((name) => document.removeEventListener(name, resetIdleTimer));
   };

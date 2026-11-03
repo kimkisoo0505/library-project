@@ -18,6 +18,8 @@ import {
   expireStaleReservations,
 } from './reservations.js';
 
+import { handleCentralLibrary } from './central-library.js';
+
 export { SeatRoom } from './durable-objects/seat-room.js';
 
 const router = new Router()
@@ -31,6 +33,9 @@ const router = new Router()
 
   // 좌석
   .get('/api/seats', handleListSeats)
+
+  // 외부: 경기대 중앙도서관 / 금화도서관 공석 현황 (캐시)
+  .get('/api/central-library', handleCentralLibrary)
 
   // 학생 예약
   .post('/api/reservations', handleCreateReservation)

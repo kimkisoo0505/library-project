@@ -68,6 +68,10 @@ events (seat_id, reservation_id, actor_* 로 느슨하게 참조)
 
 점유 상태(예약/착석)는 seats에 중복 저장하지 않고 `reservations`의 활성 행에서 파생합니다. 두 곳에 상태를 두지 않아 불일치가 생기지 않습니다.
 
+### external_snapshots — 외부 데이터 캐시 (0003)
+경기대 중앙/금화도서관 공석 현황의 마지막 조회 결과. `source`(PK), `payload`(정규화 JSON), `fetched_at`(마지막 성공),
+`attempted_at`(마지막 시도, 조건부 UPSERT로 선점해 동시 외부 호출 방지), `last_error`. 개인정보 없음.
+
 ### reservations — 예약/이용 기록
 | 컬럼 | 설명 |
 |---|---|

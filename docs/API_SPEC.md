@@ -78,6 +78,26 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 `state`: `available | reserved | occupied | maintenance`
 다른 학생의 식별 정보는 포함되지 않습니다.
 
+### `GET /central-library` — 경기대 중앙도서관(수원) · 금화도서관(서울) 공석 (인증 불필요)
+출처 `libgate.kyonggi.ac.kr/libraries/lib-status/{1|2}`를 서버가 대신 조회하여 D1에 1분 단위로 캐시합니다.
+이용자 요청마다 학교 서버를 호출하지 않으며, 동시에 여러 요청이 와도 외부 호출은 1건입니다.
+```json
+{
+  "source": "경기대학교 도서관 (libgate.kyonggi.ac.kr)",
+  "available": true,
+  "fetched_at": "2026-11-03T15:25:25.030Z",
+  "stale": false,
+  "degraded": false,
+  "campuses": [
+    { "id": 1, "campus": "수원캠퍼스", "library": "중앙도서관", "total": 421, "available": 421, "fetched_at": "...",
+      "rooms": [ { "code": 8, "name": "3F 제1열람실_플로어", "total": 50, "available": 50, "in_use": 0, "fixed": 0, "unavailable": 0, "hours": "06:00~00:00" } ] },
+    { "id": 2, "campus": "서울캠퍼스", "library": "금화도서관", "total": 127, "available": 122, "rooms": [] }
+  ]
+}
+```
+- `stale`: 마지막 성공이 10분 이상 지남 / `degraded`: 최근 조회 일부·전부 실패 (사유는 관리자 이벤트 로그 `external.central_library_failed`)
+- 한 캠퍼스만 실패하면 그 캠퍼스는 이전 결과를 유지합니다.
+
 ## 4. 예약 (학생 세션)
 
 | 메서드 | 경로 | 설명 | 상태 전이 |
