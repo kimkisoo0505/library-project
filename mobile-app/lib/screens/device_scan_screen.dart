@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/ble_device.dart';
 import '../models/scan_results.dart';
 import '../services/ble_service.dart';
+import '../services/communication_service.dart';
 import '../utils/permission_manager.dart';
 import '../widgets/device_list_item.dart';
 import 'device_detail_screen.dart';
@@ -15,10 +16,12 @@ class DeviceScanScreen extends StatefulWidget {
     super.key,
     required this.ble,
     required this.permissions,
+    this.comm,
   });
 
   final BleService ble;
   final PermissionManager permissions;
+  final CommunicationService? comm;
 
   @override
   State<DeviceScanScreen> createState() => _DeviceScanScreenState();
@@ -199,6 +202,7 @@ class _DeviceScanScreenState extends State<DeviceScanScreen>
           ble: widget.ble,
           device: device,
           requireLocationService: (_sdkInt ?? 31) < 31,
+          comm: widget.comm,
         ),
       ),
     );

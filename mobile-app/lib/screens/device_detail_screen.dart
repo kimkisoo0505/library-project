@@ -2,24 +2,32 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../models/ble_connection.dart';
 import '../models/ble_device.dart';
 import '../services/ble_service.dart';
+import '../services/communication_service.dart';
 import '../services/rssi_service.dart';
+import '../widgets/connection_status.dart';
 import '../widgets/signal_indicator.dart';
+import 'communication_screen.dart';
 
-/// Step 3: continuous RSSI measurement of one device (from its
-/// advertisements; no connection yet).
+/// Steps 3–4: RSSI measurement of one device, and connecting to it.
+///
+/// - Not connected: RSSI from the device's advertisements (scanning).
+/// - Connected: RSSI read over the connection once per second.
 class DeviceDetailScreen extends StatefulWidget {
   const DeviceDetailScreen({
     super.key,
     required this.ble,
     required this.device,
     required this.requireLocationService,
+    this.comm,
   });
 
   final BleService ble;
   final BleDevice device;
   final bool requireLocationService;
+  final CommunicationService? comm;
 
   @override
   State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
@@ -28,56 +36,112 @@ class DeviceDetailScreen extends StatefulWidget {
 class _DeviceDetailScreenState extends State<DeviceDetailScreen>
     with WidgetsBindingObserver {
   /// Long scans waste battery and Android downgrades scans after 30 min.
-  static const _maxSession = Duration(minutes: 5);
+  static const _maxScanSession = Duration(minutes: 5);
   static const _avgWindow = Duration(seconds: 5);
   static const _chartWindow = Duration(seconds: 60);
+  static const _rssiPollInterval = Duration(seconds: 1);
 
   late final RssiService _rssi = RssiService(widget.ble);
   final _tracker = RssiTracker();
 
-  StreamSubscription<RssiSample>? _sub;
+  /// The user wants RSSI measured (toggled by the play/pause button).
+  bool _wantMeasure = true;
+
+  StreamSubscription<RssiSample>? _scanSub;
   StreamSubscription<AdapterState>? _adapterSub;
   Timer? _ticker;
-  Timer? _sessionLimit;
+  Timer? _scanLimit;
+  Timer? _rssiPoll;
   String? _message;
+  AppConnectionState? _lastState;
 
-  bool get _measuring => _sub != null;
+  BleService get _ble => widget.ble;
+  BleConnection get _conn => _ble.connection;
+  bool get _connectedHere => _conn.isFor(widget.device.id) && _conn.isConnected;
+  bool get _scanning => _scanSub != null;
+  bool get _polling => _rssiPoll != null;
+  bool get _measuring => _scanning || _polling;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tracker.add(RssiSample(widget.device.lastSeen, widget.device.rssi));
-    _adapterSub = widget.ble.adapterState.listen((s) {
-      if (s == AdapterState.poweredOff && _measuring) {
-        _stop('블루투스가 꺼져서 측정을 멈췄습니다.');
+    _adapterSub = _ble.adapterState.listen((s) {
+      if (s == AdapterState.poweredOff && _scanning) {
+        _stopScan('블루투스가 꺼져서 측정을 멈췄습니다.');
       }
     });
+    _ble.addListener(_onConnectionChanged);
+    _lastState = _conn.isFor(widget.device.id) ? _conn.state : null;
     _ticker = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (mounted) setState(() {});
     });
-    _start();
+    _applyMeasureMode();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && _measuring) {
-      _stop('앱이 백그라운드로 가서 측정을 멈췄습니다.');
+    if (state == AppLifecycleState.paused && _scanning) {
+      _stopScan('앱이 백그라운드로 가서 측정을 멈췄습니다.');
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _sub?.cancel();
+    _ble.removeListener(_onConnectionChanged);
+    _scanSub?.cancel();
     _adapterSub?.cancel();
     _ticker?.cancel();
-    _sessionLimit?.cancel();
+    _scanLimit?.cancel();
+    _rssiPoll?.cancel();
     super.dispose();
   }
 
-  void _start() {
-    final wait = widget.ble.waitBeforeNextScan();
+  // ------------------------------------------------------------ connection
+
+  void _onConnectionChanged() {
+    if (!mounted) return;
+    final mine = _conn.isFor(widget.device.id);
+    final state = mine ? _conn.state : null;
+    if (state != _lastState) {
+      final wasConnected = _lastState == AppConnectionState.connected;
+      _lastState = state;
+      if (mine && wasConnected && endedUnexpectedly(_conn)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(lastEndText(_conn) ?? '연결이 끊어졌습니다.')),
+        );
+      }
+      _applyMeasureMode();
+    }
+    setState(() {});
+  }
+
+  Future<void> _connect() async {
+    _stopScan(null); // connecting does not need our scan
+    await _ble.connect(widget.device);
+  }
+
+  // ------------------------------------------------------------ measuring
+
+  /// Picks the RSSI source for the current connection state.
+  void _applyMeasureMode() {
+    if (_connectedHere) {
+      _stopScan(null);
+      if (_wantMeasure && !_polling) _startPolling();
+    } else {
+      _stopPolling();
+      final busy =
+          _conn.isFor(widget.device.id) &&
+          (_conn.state == AppConnectionState.connecting ||
+              _conn.state == AppConnectionState.disconnecting);
+      if (_wantMeasure && !_scanning && !busy) _startScan();
+    }
+  }
+
+  void _startScan() {
+    final wait = _ble.waitBeforeNextScan();
     if (wait > Duration.zero) {
       setState(
         () => _message =
@@ -85,30 +149,64 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen>
       );
       return;
     }
-    _sub = _rssi
+    _scanSub = _rssi
         .watch(
           deviceId: widget.device.id,
           requireLocationService: widget.requireLocationService,
         )
         .listen(
-          (s) => _tracker.add(s),
-          onError: (Object e) => _stop('측정 오류: $e'),
-          onDone: () => _stop(null),
+          _tracker.add,
+          onError: (Object e) => _stopScan('측정 오류: $e'),
+          onDone: () => _stopScan(null),
         );
-    _sessionLimit = Timer(
-      _maxSession,
-      () => _stop('배터리 절약을 위해 ${_maxSession.inMinutes}분 후 자동으로 멈췄습니다.'),
+    _scanLimit = Timer(
+      _maxScanSession,
+      () => _stopScan('배터리 절약을 위해 ${_maxScanSession.inMinutes}분 후 자동으로 멈췄습니다.'),
     );
     setState(() => _message = null);
   }
 
-  void _stop(String? message) {
-    _sub?.cancel();
-    _sub = null;
-    _sessionLimit?.cancel();
-    _sessionLimit = null;
+  void _stopScan(String? message) {
+    _scanSub?.cancel();
+    _scanSub = null;
+    _scanLimit?.cancel();
+    _scanLimit = null;
     if (mounted) setState(() => _message = message ?? _message);
   }
+
+  void _startPolling() {
+    _rssiPoll = Timer.periodic(_rssiPollInterval, (_) async {
+      try {
+        final v = await _ble.readConnectedRssi();
+        if (mounted && _connectedHere) {
+          _tracker.add(RssiSample(DateTime.now(), v, RssiSource.connection));
+        }
+      } catch (_) {
+        // No sample: the UI turns to "값 없음" after 5 s without values.
+      }
+    });
+  }
+
+  void _stopPolling() {
+    _rssiPoll?.cancel();
+    _rssiPoll = null;
+  }
+
+  void _toggleMeasure() {
+    setState(() {
+      _wantMeasure = !_wantMeasure;
+      _message = null;
+    });
+    if (_wantMeasure) {
+      _applyMeasureMode();
+    } else {
+      _stopScan(null);
+      _stopPolling();
+      setState(() {});
+    }
+  }
+
+  // ---------------------------------------------------------------- build
 
   @override
   Widget build(BuildContext context) {
@@ -121,16 +219,17 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen>
     final minute = _tracker.stats(now, _chartWindow);
     final d = widget.device;
 
+    final String sourceText = _polling ? '연결로 측정' : '광고로 측정';
     final String statusText;
     if (!_measuring) {
       statusText = '측정 중지됨';
     } else if (current != null) {
       statusText =
-          '측정 중 · ${(now.difference(latest!.at).inMilliseconds / 1000).toStringAsFixed(1)}초 전 수신';
+          '$sourceText · ${(now.difference(latest!.at).inMilliseconds / 1000).toStringAsFixed(1)}초 전 수신';
     } else {
       statusText = latest == null
-          ? '값 없음 · 아직 광고를 받지 못했습니다'
-          : '값 없음 · ${now.difference(latest.at).inSeconds}초 동안 광고 수신 없음';
+          ? '값 없음 · 아직 값을 받지 못했습니다'
+          : '값 없음 · ${now.difference(latest.at).inSeconds}초 동안 수신 없음';
     }
 
     return Scaffold(
@@ -145,7 +244,29 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen>
                 '도서관 라즈베리파이',
                 style: TextStyle(color: theme.colorScheme.primary),
               ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            _ConnectionCard(
+              ble: _ble,
+              device: d,
+              onConnect: _connect,
+              onDisconnect: _ble.disconnect,
+            ),
+            if (widget.comm != null &&
+                _connectedHere &&
+                (_conn.gatt?.isLibraryPi ?? false)) ...[
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        CommunicationScreen(ble: _ble, comm: widget.comm!),
+                  ),
+                ),
+                icon: const Icon(Icons.swap_vert),
+                label: const Text('Pi 통신 테스트 (PING / ECHO)'),
+              ),
+            ],
+            const SizedBox(height: 12),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -203,15 +324,23 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen>
                           samples: _tracker.within(now, _chartWindow),
                           now: now,
                           window: _chartWindow,
-                          line: theme.colorScheme.primary,
+                          advertColor: theme.colorScheme.primary,
+                          connColor: Colors.teal,
                           grid: theme.colorScheme.outlineVariant,
                           label: muted,
                         ),
                       ),
                     ),
                     const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 12,
+                      children: [
+                        _legend(theme.colorScheme.primary, '광고로 측정'),
+                        _legend(Colors.teal, '연결로 측정'),
+                      ],
+                    ),
                     Text(
-                      '점 하나 = 받은 광고 1개. 점이 없는 구간은 신호를 받지 못한 시간입니다.',
+                      '점 하나 = 실제로 받은 값 1개. 점이 없는 구간은 값을 받지 못한 시간입니다.',
                       style: theme.textTheme.bodySmall?.copyWith(color: muted),
                     ),
                     const Divider(height: 24),
@@ -261,14 +390,23 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen>
           const SizedBox(width: 12),
           FloatingActionButton.extended(
             heroTag: 'toggle',
-            onPressed: _measuring ? () => _stop(null) : _start,
-            icon: Icon(_measuring ? Icons.pause : Icons.play_arrow),
-            label: Text(_measuring ? '측정 중지' : '측정 시작'),
+            onPressed: _toggleMeasure,
+            icon: Icon(_wantMeasure ? Icons.pause : Icons.play_arrow),
+            label: Text(_wantMeasure ? '측정 중지' : '측정 시작'),
           ),
         ],
       ),
     );
   }
+
+  Widget _legend(Color c, String text) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(Icons.circle, size: 8, color: c),
+      const SizedBox(width: 4),
+      Text(text, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
 
   Widget _statRow(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 2),
@@ -284,6 +422,169 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen>
   );
 }
 
+/// Connection controls, GATT check and Status value for one device.
+class _ConnectionCard extends StatelessWidget {
+  const _ConnectionCard({
+    required this.ble,
+    required this.device,
+    required this.onConnect,
+    required this.onDisconnect,
+  });
+
+  final BleService ble;
+  final BleDevice device;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final c = ble.connection;
+    final mine = c.isFor(device.id);
+    final state = mine ? c.state : AppConnectionState.disconnected;
+    final otherBusy = !mine && c.state != AppConnectionState.disconnected;
+    final ended = mine ? lastEndText(c) : null;
+    final gatt = mine ? c.gatt : null;
+    final uptime = parseStatusUptime(mine ? c.status : null);
+
+    Widget button;
+    switch (state) {
+      case AppConnectionState.connected:
+        button = OutlinedButton.icon(
+          onPressed: onDisconnect,
+          icon: const Icon(Icons.link_off),
+          label: const Text('연결 해제'),
+        );
+      case AppConnectionState.connecting:
+        button = OutlinedButton.icon(
+          onPressed: onDisconnect, // cancel the attempt
+          icon: const SizedBox.square(
+            dimension: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          label: const Text('연결 취소'),
+        );
+      case AppConnectionState.disconnecting:
+        button = const OutlinedButton(onPressed: null, child: Text('해제 중…'));
+      case AppConnectionState.disconnected:
+        button = FilledButton.icon(
+          onPressed: onConnect,
+          icon: const Icon(Icons.link),
+          label: const Text('연결'),
+        );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: ConnectionStatus(state: state)),
+                button,
+              ],
+            ),
+            if (otherBusy)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '다른 기기(${c.deviceName ?? c.deviceId})와 연결되어 있습니다. 연결하면 그 연결은 해제됩니다.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ),
+            if (ended != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  ended,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: endedUnexpectedly(c)
+                        ? theme.colorScheme.error
+                        : muted,
+                  ),
+                ),
+              ),
+            if (state == AppConnectionState.connected) ...[
+              const Divider(height: 20),
+              if (gatt == null)
+                Text('서비스 확인 중…', style: TextStyle(color: muted))
+              else ...[
+                _check(context, '도서관 서비스', gatt.serviceFound),
+                _check(context, 'Command 특성 (쓰기)', gatt.commandOk),
+                _check(context, 'Response 특성 (알림)', gatt.responseOk),
+                _check(context, 'Status 특성 (읽기)', gatt.statusOk),
+                const SizedBox(height: 4),
+                Text(
+                  gatt.isLibraryPi
+                      ? '도서관 라즈베리파이로 확인되었습니다.'
+                      : '도서관 라즈베리파이가 아닙니다 (서비스 ${gatt.serviceCount}개 발견).',
+                  style: TextStyle(
+                    color: gatt.isLibraryPi
+                        ? Colors.green
+                        : theme.colorScheme.error,
+                  ),
+                ),
+              ],
+              if (gatt?.statusOk == true) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        c.statusError != null
+                            ? 'Status 읽기 실패: ${c.statusError}'
+                            : c.status == null
+                            ? 'Status 읽는 중…'
+                            : 'Status "${c.status}"'
+                                  '${uptime == null ? '' : ' · Pi 서버 실행 ${_duration(uptime)}'}',
+                        style: TextStyle(
+                          color: c.statusError != null
+                              ? theme.colorScheme.error
+                              : null,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: ble.readStatus,
+                      child: const Text('다시 읽기'),
+                    ),
+                  ],
+                ),
+              ] else if (gatt != null && c.statusError != null)
+                Text(
+                  c.statusError!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _check(BuildContext context, String label, bool ok) => Row(
+    children: [
+      Icon(
+        ok ? Icons.check_circle : Icons.cancel,
+        size: 18,
+        color: ok ? Colors.green : Colors.red,
+      ),
+      const SizedBox(width: 6),
+      Text(label),
+    ],
+  );
+
+  static String _duration(int s) {
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    if (h > 0) return '$h시간 $m분';
+    if (m > 0) return '$m분 $sec초';
+    return '$sec초';
+  }
+}
+
 /// Scatter of measured samples over the last [window]. Draws only real
 /// points (no connecting lines across gaps, no smoothing).
 class _RssiChartPainter extends CustomPainter {
@@ -291,7 +592,8 @@ class _RssiChartPainter extends CustomPainter {
     required this.samples,
     required this.now,
     required this.window,
-    required this.line,
+    required this.advertColor,
+    required this.connColor,
     required this.grid,
     required this.label,
   });
@@ -299,7 +601,7 @@ class _RssiChartPainter extends CustomPainter {
   final List<RssiSample> samples;
   final DateTime now;
   final Duration window;
-  final Color line, grid, label;
+  final Color advertColor, connColor, grid, label;
 
   static const _top = -30, _bottom = -100;
   static const _leftPad = 34.0;
@@ -333,9 +635,14 @@ class _RssiChartPainter extends CustomPainter {
       );
     }
 
-    final dot = Paint()..color = line;
+    final adv = Paint()..color = advertColor;
+    final conn = Paint()..color = connColor;
     for (final s in samples) {
-      canvas.drawCircle(Offset(x(s.at), y(s.rssi)), 2.5, dot);
+      canvas.drawCircle(
+        Offset(x(s.at), y(s.rssi)),
+        2.5,
+        s.source == RssiSource.connection ? conn : adv,
+      );
     }
   }
 

@@ -153,20 +153,25 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 ```json
 { "room": "A", "agent_version": "0.1.0",
   "network": { "type": "wifi", "ssid": "AndroidHotspot4912", "signal": 80, "band": "2.4GHz" },
-  "lcd": true, "serial": false, "central_library": true }
+  "lcd": true, "serial": false, "central_library": true,
+  "ble": { "server": true, "connected": [ { "id": "60:D5", "since": "2026-11-07T10:00:00Z" } ] } }
 ```
 허용 필드만 정규화해 `device_status` 에 장치별 최신 1행으로 저장 (IP/MAC 저장 안 함). 응답 `202`.
+`ble` (임시, 모바일 앱 통신 시험용): `server` = `library-ble` 서비스 실행 여부, `connected` = BLE 로 연결된 기기의
+**주소 끝 2바이트**(`XX:XX`)와 처음 확인 시각, 최대 5대. 기기 이름·전체 주소는 받지 않으며 형식이 다르면 버린다.
+`ble: null` = 정보 없음(구버전 에이전트).
 
 ### `GET /system-status` — 키오스크 임시 상태 표시줄 (공개)
 ```json
 { "devices": [
     { "room": "A", "kind": "raspberry-pi", "label": "라즈베리파이 (열람실 A)", "online": true, "last_seen_at": "...",
-      "network": { "type": "wifi", "ssid": "...", "signal": 60, "band": "5GHz" }, "lcd": true, "serial": false },
+      "network": { "type": "wifi", "ssid": "...", "signal": 60, "band": "5GHz" }, "lcd": true, "serial": false,
+      "ble": { "server": true, "connected": [ { "id": "60:D5", "since": "..." } ] } },
     { "room": "B", "kind": "arduino", "label": "아두이노 (열람실 B)", "online": false, "last_seen_at": null },
     { "room": "C", "kind": "arduino", "label": "아두이노 (열람실 C)", "online": false, "last_seen_at": null } ],
   "central_library": { "ok": true, "fetched_at": "...", "degraded": false } }
 ```
-`online` = 마지막 보고 90초 이내. `central_library.ok` = 3분 이내 정상 수신.
+`online` = 마지막 보고 90초 이내. `central_library.ok` = 3분 이내 정상 수신. `ble` 은 라즈베리파이 항목에만 있다.
 
 ## 7. WebSocket
 

@@ -3,7 +3,8 @@
  *
  *  POST /api/device/status  (장치 토큰) : 장치가 30초마다 최신 상태 보고
  *  GET  /api/system-status  (공개)      : 라즈베리파이(A) / 아두이노(B, C) 연결 여부,
- *                                          라즈베리파이 Wi-Fi, 경기대 도서관 서버 조회 상태
+ *                                          라즈베리파이 Wi-Fi, 경기대 도서관 서버 조회 상태,
+ *                                          라즈베리파이에 BLE 로 연결된 모바일 기기 (임시)
  *
  * 장치 입력도 신뢰하지 않는다: 허용된 필드만 정규화해서 저장한다. IP/MAC 등은 저장하지 않는다.
  */
@@ -26,6 +27,8 @@ export const EXPECTED_DEVICES = Object.freeze([
 ]);
 
 const NETWORK_TYPES = new Set(['wifi', 'ethernet', 'none', 'unknown']);
+const MAX_BLE_CLIENTS = 5;
+const BLE_CLIENT_ID = /^[0-9A-F]{2}:[0-9A-F]{2}$/;   // 주소 끝 2바이트만 (전체 주소·기기 이름은 받지 않음)
 const BANDS = new Set(['2.4GHz', '5GHz']);
 
 function text(value, max) {
@@ -36,6 +39,25 @@ function text(value, max) {
 
 function flag(value) {
   return value === true ? true : value === false ? false : null;
+}
+
+/**
+ * BLE 정보 정규화: { server: bool|null, connected: [{ id: 'EE:FF', since: ISO|null }] | null }
+ * 공개 응답에 그대로 나가므로 주소 끝 4자리 외의 식별 정보는 버린다.
+ */
+export function normalizeBle(ble) {
+  if (ble == null || typeof ble !== 'object') return null;
+  let connected = null;
+  if (Array.isArray(ble.connected)) {
+    connected = [];
+    for (const c of ble.connected.slice(0, MAX_BLE_CLIENTS)) {
+      const id = String(c?.id ?? '').toUpperCase();
+      if (!BLE_CLIENT_ID.test(id)) continue;
+      const t = Date.parse(c?.since ?? '');
+      connected.push({ id, since: Number.isNaN(t) ? null : new Date(t).toISOString() });
+    }
+  }
+  return { server: flag(ble.server), connected };
 }
 
 /** 장치 보고 본문 정규화 */
@@ -57,6 +79,7 @@ export function normalizeDeviceStatus(body) {
     lcd: flag(body?.lcd),
     serial: flag(body?.serial),
     central_library: flag(body?.central_library),
+    ble: normalizeBle(body?.ble),
   };
 }
 
@@ -92,6 +115,7 @@ export function buildSystemStatus(rows, central, now = Date.now()) {
       network: status?.network ?? null,
       lcd: status?.lcd ?? null,
       serial: status?.serial ?? null,
+      ...(expected.kind === 'raspberry-pi' ? { ble: status?.ble ?? null } : {}),
     };
   });
 

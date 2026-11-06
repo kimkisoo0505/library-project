@@ -3,6 +3,7 @@
  *  - 라즈베리파이(A) / 아두이노(B) / 아두이노(C) 연결 여부
  *  - 라즈베리파이가 연결된 Wi-Fi 이름과 신호 세기
  *  - 경기대 도서관 서버(중앙/금화) 값을 정상적으로 불러왔는지
+ *  - 라즈베리파이에 BLE 로 연결된 모바일 기기 (앱 통신 시험용, 주소 끝 4자리만 표시)
  */
 export const SHOW_SYSTEM_STATUS = import.meta.env.VITE_SHOW_SYSTEM_STATUS === 'true';
 
@@ -38,6 +39,28 @@ function networkText(network) {
   return '네트워크 확인 불가';
 }
 
+function since(iso) {
+  const t = Date.parse(iso ?? '');
+  if (Number.isNaN(t)) return null;
+  const m = Math.max(0, Math.floor((Date.now() - t) / 60_000));
+  return m < 1 ? '방금' : m < 60 ? `${m}분째` : `${Math.floor(m / 60)}시간째`;
+}
+
+/** 라즈베리파이 보고의 ble 필드 -> [ok, detail] */
+export function bleStatusText(pi) {
+  if (!pi) return [null, '라즈베리파이 정보 없음'];
+  if (!pi.online) return [null, '라즈베리파이 연결 안 됨 · 확인 불가'];
+  const ble = pi.ble;
+  if (!ble) return [null, '정보 없음 (에이전트 업데이트 필요)'];
+  if (ble.server === false) return [false, 'BLE 서버 꺼짐'];
+  if (!Array.isArray(ble.connected)) return [null, 'BLE 서버 실행 중 · 연결 정보 확인 불가'];
+  if (ble.connected.length === 0) return [null, 'BLE 서버 실행 중 · 연결된 기기 없음'];
+  const list = ble.connected
+    .map((c) => `…${c.id}${since(c.since) ? ` (${since(c.since)})` : ''}`)
+    .join(', ');
+  return [true, `${ble.connected.length}대 연결 · ${list}`];
+}
+
 export function createSystemStatusBar() {
   const element = el('section', 'system-status');
   element.setAttribute('aria-label', '시스템 연결 상태 (임시)');
@@ -69,6 +92,9 @@ export function createSystemStatusBar() {
         '경기대 도서관 서버',
         cl.ok ? `정상 수신 (${clSeen})` : cl.fetched_at ? `수신 지연/실패 (마지막 성공 ${clSeen})` : '수신 기록 없음',
       ));
+      const pi = (data.devices ?? []).find((d) => d.kind === 'raspberry-pi');
+      const [bleOk, bleDetail] = bleStatusText(pi);
+      list.append(item(bleOk, '모바일 기기 (BLE, 임시)', bleDetail));
       meta.textContent = `상태 확인: ${new Date().toLocaleTimeString('ko-KR')}`;
     },
     showError() {

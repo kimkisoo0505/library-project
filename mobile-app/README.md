@@ -66,15 +66,19 @@ lib/
 ├── main.dart                    앱 진입점 (runApp)
 ├── app.dart                     MaterialApp, 테마. BleService·PermissionManager를 한 번 만들어 화면에 전달
 ├── models/
+│   ├── ble_connection.dart      연결 상태·끊김 사유·GATT 검증·Status 해석 (순수 로직)
+│   ├── ble_message.dart         통신 기록 항목, 명령 만들기·검증(20바이트), 응답 해석, 순번 1~999
 │   ├── ble_device.dart          검색된 기기 (id, 이름, RSSI, 측정 시각, 서비스 UUID, 연결 가능 여부)
 │   └── scan_results.dart        검색 결과 누적·정렬·필터 (Pi 우선 → 신호 세기순 → 신호 끊김)
 ├── services/
-│   ├── ble_service.dart         flutter_reactive_ble를 쓰는 유일한 계층 (블루투스 상태, 검색, 앱 전체 검색 횟수 제한)
+│   ├── ble_service.dart         flutter_reactive_ble를 쓰는 유일한 계층 (블루투스 상태, 검색, 검색 횟수 제한, 앱 전체 연결 1개 관리)
+│   ├── communication_service.dart Pi 응답 알림 자동 구독, 명령↔응답 짝짓기(순번), 왕복 시간, 3초 시간 초과, PING 10회
 │   └── rssi_service.dart        한 기기의 RSSI 실측값 기록 (최근 60초, 5초 넘게 수신 없으면 "값 없음"), 통계
 ├── screens/
 │   ├── home_screen.dart         홈: 연결 상태, 대상 기기·Service UUID, 기기 검색 진입
+│   ├── communication_screen.dart PING/INFO/ECHO/직접 입력, PING 10회, 통신 기록·요약
 │   ├── device_scan_screen.dart  권한·블루투스·위치 상태 확인, 15초 검색, 기기 목록 (누르면 측정 화면)
-│   └── device_detail_screen.dart 선택 기기의 RSSI 연속 측정: 현재값, 신호 막대, 60초 그래프, 평균·최소·최대
+│   └── device_detail_screen.dart 선택 기기 연결·해제, GATT 확인, Status 읽기, RSSI 연속 측정(광고/연결 구분)
 ├── widgets/
 │   ├── connection_status.dart   연결 상태 아이콘+텍스트
 │   ├── device_list_item.dart    기기 한 줄: 이름/ID, 신호 막대, RSSI(dBm)와 측정 시각, 10초 넘으면 "신호 끊김"
@@ -86,11 +90,11 @@ lib/
 android/.../MainActivity.kt      네이티브 채널 library_ble/device: SDK 버전, 블루투스 켜기 창, 위치 설정 열기
 test/widget_test.dart            홈 화면, UUID 일관성, 정렬·필터, 검색 횟수 제한 테스트
 test/rssi_test.dart              RSSI 기록·"값 없음" 전환·통계·신호 단계 테스트
+test/communication_test.dart     가짜 Pi로 송수신·거부·시간 초과·전송 실패·끊김 처리 테스트
+test/connection_test.dart        상태 전환·끊김 사유, GATT 검증, 가짜 BLE로 연결→끊김 화면 흐름
 test/detail_screen_test.dart     가짜 BLE로 측정 화면 동작 테스트 (선택 기기만 반영, 중지 시 값 없음)
 ```
 
-이후 단계에서 추가될 파일: `models/ble_message.dart`, `services/communication_service.dart`,
-`screens/communication_screen.dart`.
 
 ### 2단계 동작 요약
 
@@ -106,13 +110,30 @@ test/detail_screen_test.dart     가짜 BLE로 측정 화면 동작 테스트 (�
 - 최근 60초 그래프는 받은 값만 점으로 표시 (선 연결·보간 없음), 최근 5초 평균은 "평균"과 표본 수를 함께 표시
 - 신호 단계: -60 이상 매우 강함 / -70 강함 / -80 보통 / -90 약함 / 그 미만 매우 약함. 거리 추정은 하지 않음
 - 5분 후 자동 중지(배터리), 백그라운드·블루투스 꺼짐 시 중지. 검색 횟수 제한(30초 5회)은 화면 간에 공유
+### 4단계 동작 요약 (연결)
+
+- 측정 화면의 "연결" 버튼으로 연결 (10초 안에 안 되면 "시간 초과"). 연결 중에는 "연결 취소"
+- 연결은 앱 전체에서 1개만 유지 — 화면을 나가도 유지되고 홈 화면에 실제 상태 표시, 홈에서도 해제 가능
+- 연결 후 서비스 탐색으로 도서관 서비스·Command(쓰기)·Response(알림)·Status(읽기) 확인 → "도서관 라즈베리파이로 확인"
+- Status 특성을 읽어 `OK,<초>` 와 Pi 서버 실행 시간 표시 (다시 읽기 가능)
+- 끊김 사유 구분: 사용자 해제 / 연결 끊어짐(범위 밖·전원 꺼짐) / 시간 초과 / 연결 실패 + 시각. 의도치 않은 끊김은 빨간색과 알림
+- 연결 중 RSSI는 연결로 1초마다 읽음(청록 점), 연결 전·끊긴 뒤에는 광고로 측정(파란 점)
+- 자동 재연결은 7단계에서 추가 (지금은 끊기면 버튼으로 다시 연결)
+### 5단계 동작 요약 (송수신)
+
+- 도서관 Pi로 확인된 연결이면 Response 알림을 자동 구독 → 홈·측정 화면에 "Pi 통신 테스트" 버튼
+- PING / INFO / ECHO(영문·숫자 최대 11자) / 직접 입력(최대 20바이트, Pi 오류 응답 시험용)
+- 보낸 명령은 같은 순번의 응답과 짝지어 왕복 시간(ms) 표시. Pi가 ERR 로 답하면 "거부됨"
+- 3초 안에 응답이 없으면 "시간 초과", 쓰기 실패는 "전송 실패", 기다리는 중 끊기면 "연결 끊김"
+- PING 10회 (0.3초 간격, Pi 속도 제한 1초 10개 이하): 응답 수·손실·평균/최소/최대 왕복 시간
+- 통신 기록은 앱 메모리에만 최근 300개 (파일·서버로 보내지 않음)
 
 ## 개발 단계
 
 - [x] 1. 앱 기본 화면 — 프로젝트 생성, 의존성 고정, 권한 선언, 디버그 APK 빌드 확인
 - [x] 2. BLE 검색 — Bluetooth 상태 확인, 권한 요청, 기기 목록(이름·ID·실측 RSSI)
 - [x] 3. RSSI 표시 — 실측값/측정 시각/값 없음 구분, 신호 막대, 60초 그래프
-- [ ] 4. BLE 연결 — 연결·해제, 상태 표시, 끊김 감지
-- [ ] 5. 데이터 송수신 — Command Write, Response Notify, 통신 기록
+- [x] 4. BLE 연결 — 연결·해제, 상태 표시, 끊김 감지, GATT 확인, Status 읽기
+- [x] 5. 데이터 송수신 — Command Write, Response Notify, 통신 기록, 왕복 시간, 시간 초과·전송 실패 처리
 - [ ] 6. Raspberry Pi GATT 서버 연결 — Pi 측 구현과 실기 통신
 - [ ] 7. 재연결 및 안정성 테스트

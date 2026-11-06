@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
 import 'services/ble_service.dart';
+import 'services/communication_service.dart';
 import 'utils/permission_manager.dart';
 
 class LibraryBleApp extends StatelessWidget {
@@ -9,10 +10,13 @@ class LibraryBleApp extends StatelessWidget {
   /// the BLE connection in [BleService]). Tests can inject fakes.
   LibraryBleApp({super.key, BleService? ble, PermissionManager? permissions})
     : ble = ble ?? BleService(),
-      permissions = permissions ?? PermissionManager();
+      permissions = permissions ?? PermissionManager() {
+    comm = CommunicationService(this.ble);
+  }
 
   final BleService ble;
   final PermissionManager permissions;
+  late final CommunicationService comm;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +28,7 @@ class LibraryBleApp extends StatelessWidget {
         brightness: Brightness.dark,
         useMaterial3: true,
       ),
-      home: HomeScreen(ble: ble, permissions: permissions),
+      home: HomeScreen(ble: ble, permissions: permissions, comm: comm),
     );
   }
 }

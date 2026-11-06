@@ -1,8 +1,16 @@
 import logging
 import unittest
+from datetime import datetime, timezone
 from typing import Any
 
-from agent.device_status import DeviceStatusReporter, parse_network, split_terse
+from agent.device_status import (
+    BleStatusReader,
+    DeviceStatusReporter,
+    mask_address,
+    parse_ble_connected,
+    parse_network,
+    split_terse,
+)
 
 logging.getLogger("agent").setLevel(logging.CRITICAL)
 
@@ -45,6 +53,7 @@ class ReporterTests(unittest.IsolatedAsyncioTestCase):
             cloud, room="A", is_online=lambda: online,
             components=lambda: {"lcd": True, "serial": False, "central_library": True},
             network_reader=lambda: {"type": "wifi", "ssid": "SK_WiFiGIGAC88A_5G", "signal": 60, "band": "5GHz"},
+            ble_reader=lambda: {"server": True, "connected": [{"id": "60:D5", "since": "2026-11-07T10:00:00Z"}]},
         )
 
     async def test_payload(self) -> None:
@@ -53,12 +62,40 @@ class ReporterTests(unittest.IsolatedAsyncioTestCase):
         p = cloud.payloads[0]
         self.assertEqual((p["room"], p["network"]["ssid"], p["lcd"], p["serial"], p["central_library"]),
                          ("A", "SK_WiFiGIGAC88A_5G", True, False, True))
-        sent_keys = set(p) | set(p["network"])
+        self.assertEqual(p["ble"]["connected"][0]["id"], "60:D5")
+        sent_keys = set(p) | set(p["network"]) | set(p["ble"]) | set(p["ble"]["connected"][0])
         self.assertFalse(sent_keys & {"ip", "ip_address", "address", "mac", "password"}, "IP/MAC/비밀번호는 보내지 않음")
 
     async def test_offline_skipped_and_upload_failure(self) -> None:
         self.assertIsNone(await self.reporter(FakeCloud(), online=False).report_once())
         self.assertFalse(await self.reporter(FakeCloud(fail=True)).report_once())
+
+
+class BleStatusTests(unittest.TestCase):
+    OUT = "Device 5D:C0:9A:CD:60:D5 Galaxy Note 7\nDevice aa:bb:cc:dd:ee:ff 홍길동의 Galaxy\ngarbage line\n"
+
+    def test_parse_drops_names(self) -> None:
+        self.assertEqual(parse_ble_connected(self.OUT), ["5D:C0:9A:CD:60:D5", "AA:BB:CC:DD:EE:FF"])
+        self.assertEqual(mask_address("5D:C0:9A:CD:60:D5"), "60:D5")
+
+    def test_reader_masks_and_tracks_since(self) -> None:
+        outputs = {"systemctl": "active\n", "bluetoothctl": self.OUT}
+        times = iter([datetime(2026, 11, 7, 10, 0, tzinfo=timezone.utc), datetime(2026, 11, 7, 10, 5, tzinfo=timezone.utc)])
+        reader = BleStatusReader(run=lambda args: outputs[args[0]], clock=lambda: next(times))
+        first = reader.read()
+        self.assertEqual(first["server"], True)
+        self.assertEqual([c["id"] for c in first["connected"]], ["60:D5", "EE:FF"])
+        self.assertNotIn("Galaxy", str(first))
+        self.assertNotIn("5D:C0", str(first))
+        outputs["bluetoothctl"] = "Device 5D:C0:9A:CD:60:D5 Galaxy Note 7\n"
+        second = reader.read()
+        self.assertEqual(second["connected"], [{"id": "60:D5", "since": "2026-11-07T10:00:00Z"}],
+                         "처음 확인한 시각을 유지")
+
+    def test_reader_server_inactive_and_unavailable(self) -> None:
+        reader = BleStatusReader(run=lambda args: "inactive\n" if args[0] == "systemctl" else "")
+        self.assertEqual(reader.read(), {"server": False, "connected": []})
+        self.assertIsNone(BleStatusReader(run=lambda args: None).read())
 
 
 if __name__ == "__main__":

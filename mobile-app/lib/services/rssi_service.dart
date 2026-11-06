@@ -3,13 +3,27 @@ import 'dart:async';
 import '../models/ble_device.dart';
 import 'ble_service.dart';
 
-/// One RSSI value actually reported by the phone for one received
-/// advertisement. Never synthesized or interpolated.
+/// Where a measured RSSI value came from.
+enum RssiSource {
+  /// From a received advertisement while scanning (not connected).
+  advertisement,
+
+  /// Read from the open connection (`readRssi`).
+  connection,
+}
+
+/// One RSSI value actually reported by the phone's Bluetooth stack.
+/// Never synthesized or interpolated.
 class RssiSample {
-  const RssiSample(this.at, this.rssi);
+  const RssiSample(
+    this.at,
+    this.rssi, [
+    this.source = RssiSource.advertisement,
+  ]);
 
   final DateTime at;
   final int rssi;
+  final RssiSource source;
 }
 
 /// Summary of the real samples inside a time window.

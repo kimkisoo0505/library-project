@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// App-level connection state, independent of the BLE library's types so
-/// screens do not depend on flutter_reactive_ble directly.
-enum AppConnectionState { disconnected, connecting, connected, disconnecting }
+import '../models/ble_connection.dart';
+
+export '../models/ble_connection.dart' show AppConnectionState;
 
 class ConnectionStatus extends StatelessWidget {
   const ConnectionStatus({super.key, required this.state, this.deviceName});
@@ -48,3 +48,32 @@ class ConnectionStatus extends StatelessWidget {
     );
   }
 }
+
+String _hms(DateTime t) =>
+    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
+
+/// One-line explanation of how the last connection ended, or null if the
+/// connection never ended (or never started).
+String? lastEndText(BleConnection c) {
+  final at = c.endedAt;
+  final reason = c.reason;
+  if (at == null ||
+      reason == null ||
+      c.state != AppConnectionState.disconnected) {
+    return null;
+  }
+  final what = switch (reason) {
+    DisconnectReason.user => '연결을 해제했습니다',
+    DisconnectReason.lost => '연결이 끊어졌습니다 (범위 밖·전원 꺼짐 등)',
+    DisconnectReason.timeout => '연결 시간 초과 (10초)',
+    DisconnectReason.failed => '연결하지 못했습니다',
+  };
+  final err = c.error == null || c.error!.isEmpty ? '' : ' · ${c.error}';
+  return '${_hms(at)} $what$err';
+}
+
+/// True when the last ending was not the user's choice (shown as a warning).
+bool endedUnexpectedly(BleConnection c) =>
+    c.state == AppConnectionState.disconnected &&
+    c.reason != null &&
+    c.reason != DisconnectReason.user;

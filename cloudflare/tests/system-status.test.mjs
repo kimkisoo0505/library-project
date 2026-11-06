@@ -1,7 +1,7 @@
 // 장치 상태 / 시스템 상태 단위 테스트
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSystemStatus, normalizeDeviceStatus } from '../workers/system-status.js';
+import { buildSystemStatus, normalizeBle, normalizeDeviceStatus } from '../workers/system-status.js';
 
 const NOW = Date.parse('2026-11-04T10:00:00.000Z');
 const ago = (ms) => new Date(NOW - ms).toISOString();
@@ -47,4 +47,33 @@ test('buildSystemStatus: 오래된 보고 / 중앙도서관 실패·지연', () 
   const failed = buildSystemStatus([], { fetched_at: ago(10_000), last_error: '중앙도서관: http_526' }, NOW);
   assert.deepEqual([failed.central_library.ok, failed.central_library.degraded], [false, true]);
   assert.equal(buildSystemStatus([], null, NOW).central_library.ok, false);
+});
+
+test('normalizeBle: 주소 끝 4자리만, 최대 5대, 이름·전체 주소 버림', () => {
+  const b = normalizeBle({
+    server: true,
+    connected: [
+      { id: '60:d5', since: '2026-11-07T10:00:00Z', name: '홍길동의 Galaxy', address: '5D:C0:9A:CD:60:D5' },
+      { id: '5D:C0:9A:CD:60:D5' },               // 전체 주소 → 버림
+      { id: 'EE:FF', since: 'not-a-date' },
+      ...Array.from({ length: 10 }, () => ({ id: '11:22' })),
+    ],
+  });
+  assert.equal(b.server, true);
+  assert.deepEqual(b.connected[0], { id: '60:D5', since: '2026-11-07T10:00:00.000Z' });
+  assert.deepEqual(b.connected[1], { id: 'EE:FF', since: null });
+  assert.ok(b.connected.length <= 5);
+  assert.ok(!JSON.stringify(b).includes('Galaxy') && !JSON.stringify(b).includes('5D:C0'));
+  assert.equal(normalizeBle(null), null);
+  assert.deepEqual(normalizeBle({ server: 'yes' }), { server: null, connected: null });
+});
+
+test('buildSystemStatus: 라즈베리파이에만 ble 정보', () => {
+  const rows = [{ device_id: 'library-server', room: 'A', last_seen_at: ago(10_000),
+                  payload: JSON.stringify({ ble: { server: true, connected: [{ id: '60:D5', since: null }] } }) }];
+  const r = buildSystemStatus(rows, null, NOW);
+  assert.deepEqual(r.devices[0].ble, { server: true, connected: [{ id: '60:D5', since: null }] });
+  assert.ok(!('ble' in r.devices[1]));
+  const old = buildSystemStatus([{ ...rows[0], payload: '{}' }], null, NOW);
+  assert.equal(old.devices[0].ble, null, '구버전 에이전트 보고 = 정보 없음');
 });
