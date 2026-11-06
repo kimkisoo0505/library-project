@@ -1,0 +1,4 @@
+# BLE GATT 서버(agent.ble_server) 전용 의존성. 좌석 에이전트에는 필요 없습니다.
+# 설치: .venv/bin/pip install -r requirements-ble.txt
+# bless: MIT, Linux 에서는 BlueZ D-Bus(dbus_next) 사용. bleak 등 하위 의존성 포함.
+bless==0.3.0

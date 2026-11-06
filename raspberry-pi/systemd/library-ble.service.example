@@ -1,0 +1,37 @@
+# BLE GATT 서버 (모바일 앱 통신 시험용). 좌석 에이전트(library-agent)와 별도 서비스.
+#   sudo install -m 644 systemd/library-ble.service.example /etc/systemd/system/library-ble.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now library-ble
+#   journalctl -u library-ble -f
+#
+# 끄기:  sudo systemctl disable --now library-ble
+# 비밀 값을 사용하지 않으므로 EnvironmentFile 이 없습니다.
+
+[Unit]
+Description=Library Seat System - BLE GATT server (mobile app test)
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+# BlueZ D-Bus 정책은 bluetooth 그룹에 GATT 등록을 허용합니다.
+SupplementaryGroups=bluetooth
+WorkingDirectory=/home/pi/library-project/raspberry-pi
+Environment=BLE_DEVICE_NAME=LIB-SEAT-PI
+ExecStart=/home/pi/library-project/raspberry-pi/.venv/bin/python -m agent.ble_server
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=2
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

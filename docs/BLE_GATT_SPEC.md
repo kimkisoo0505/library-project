@@ -5,6 +5,9 @@ Android 앱(`mobile-app/`, BLE **Central**)과 Raspberry Pi 3 B+(BLE **Periphera
 `mobile-app/lib/utils/ble_constants.dart`, Pi 측 GATT 서버 구현을 **함께** 수정합니다.
 
 > 상태: v0 (연결·송수신 테스트 단계). 좌석 예약·하드웨어 제어 명령은 아직 없습니다.
+>
+> 구현: Pi `raspberry-pi/agent/ble_protocol.py`(명령 처리), `agent/ble_server.py`(GATT 서버, `library-ble` 서비스) /
+> 앱 `mobile-app/lib/utils/ble_constants.dart`.
 
 ## 1. 광고 (Advertising)
 
@@ -42,9 +45,12 @@ Arduino 시리얼 프로토콜과 같은 스타일의 **쉼표 구분 ASCII 한 
 | `ECHO,<seq>,<text>` | `ECHO,<seq>,<text>` | 송수신 확인. `<text>`는 영숫자만 |
 | `INFO,<seq>` | `INFO,<seq>,<ver>` | Pi GATT 서버 버전 |
 | (그 외 모든 명령) | `ERR,<seq>,UNKNOWN` | 알 수 없는 명령 |
-| (형식 오류) | `ERR,0,BAD_FORMAT` | 파싱 실패 / 20바이트 초과 |
+| (형식 오류) | `ERR,0,BAD_FORMAT` | 파싱 실패 / 20바이트 초과 / 줄바꿈 포함 |
+| (너무 잦은 명령) | `ERR,<seq>,BUSY` | 1초에 10개 초과. seq를 읽을 수 없으면 0 |
 
-Status(Read) 값: `OK,<uptime_s>` 형식(예: `OK,3600`).
+Status(Read) 값: `OK,<uptime_s>` 형식(예: `OK,3600`). `uptime_s`는 BLE 서버 프로세스 실행 시간(초).
+
+`INFO`의 `<ver>`는 현재 `0.1`.
 
 ## 4. 보안·안전 규칙
 

@@ -13,10 +13,26 @@ class ConnectionStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (IconData icon, Color color, String label) = switch (state) {
-      AppConnectionState.connected => (Icons.bluetooth_connected, Colors.green, '연결됨'),
-      AppConnectionState.connecting => (Icons.bluetooth_searching, Colors.orange, '연결 중…'),
-      AppConnectionState.disconnecting => (Icons.bluetooth_searching, Colors.orange, '연결 해제 중…'),
-      AppConnectionState.disconnected => (Icons.bluetooth_disabled, Colors.grey, '연결 안 됨'),
+      AppConnectionState.connected => (
+        Icons.bluetooth_connected,
+        Colors.green,
+        '연결됨',
+      ),
+      AppConnectionState.connecting => (
+        Icons.bluetooth_searching,
+        Colors.orange,
+        '연결 중…',
+      ),
+      AppConnectionState.disconnecting => (
+        Icons.bluetooth_searching,
+        Colors.orange,
+        '연결 해제 중…',
+      ),
+      AppConnectionState.disconnected => (
+        Icons.bluetooth_disabled,
+        Colors.grey,
+        '연결 안 됨',
+      ),
     };
 
     return Row(

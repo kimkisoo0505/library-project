@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../services/ble_service.dart';
 import '../utils/ble_constants.dart';
+import '../utils/permission_manager.dart';
 import '../widgets/connection_status.dart';
+import 'device_scan_screen.dart';
 
-/// Step 1: static home screen. BLE status, scan and connect are wired up
-/// in later steps (see mobile-app/README.md "개발 단계").
+/// Home: connection status (connecting arrives in step 4), target device,
+/// and the entry point to BLE scanning (step 2).
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, required this.ble, required this.permissions});
+
+  final BleService ble;
+  final PermissionManager permissions;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +32,10 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     Text('연결 상태', style: textTheme.labelLarge),
                     const SizedBox(height: 8),
-                    const ConnectionStatus(state: AppConnectionState.disconnected),
+                    // Fixed until connecting is implemented (step 4).
+                    const ConnectionStatus(
+                      state: AppConnectionState.disconnected,
+                    ),
                   ],
                 ),
               ),
@@ -52,10 +61,14 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              // Enabled in step 2 (BLE scan).
-              onPressed: null,
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      DeviceScanScreen(ble: ble, permissions: permissions),
+                ),
+              ),
               icon: const Icon(Icons.search),
-              label: const Text('기기 검색 (다음 단계에서 활성화)'),
+              label: const Text('기기 검색'),
             ),
           ],
         ),

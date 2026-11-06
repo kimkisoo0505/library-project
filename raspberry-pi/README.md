@@ -21,6 +21,8 @@ Arduino ──USB 시리얼──▶ agent ──HTTPS/WSS (외부 발신)──
 | `agent/lcd_display.py` | I2C 16x2 LCD 드라이버: Grove LCD RGB Backlight(기본) / PCF8574 백팩, 바뀐 글자만 다시 씀 |
 | `agent/library_status.py` | 경기대 중앙/금화도서관 공석 중계 (중간 인증서 포함, 검증 유지) |
 | `agent/remote_command.py` | 관리자 원격 명령(전원 끄기) 검증·실행 — `ALLOW_REMOTE_SHUTDOWN`, polkit 규칙 `system/50-library-agent-poweroff.rules` 필요 |
+| `agent/ble_protocol.py` | BLE 명령 처리 (PING/ECHO/INFO, 형식 검증, 속도 제한). 순수 함수, 부작용 없음 |
+| `agent/ble_server.py` | BLE GATT 서버 (bless/BlueZ). 모바일 앱 통신 시험용, **별도 서비스** `library-ble` |
 | `agent/certs/` | 학교 서버가 빠뜨린 공개 중간 인증서 (RapidSSL TLS RSA CA G1, ~2027-11-02) |
 
 ## 안전 동작
@@ -65,6 +67,36 @@ sudo systemctl enable --now library-agent
 ```
 
 환경 점검: `bash ../scripts/check_raspberry_pi.sh`
+
+## BLE GATT 서버 (모바일 앱 통신 시험)
+
+모바일 앱(`mobile-app/`)과 BLE로 통신하는 별도 프로그램입니다. 명세: `docs/BLE_GATT_SPEC.md`.
+좌석 에이전트와 다른 프로세스·서비스이며 Arduino·서보·좌석 상태·클라우드에 접근하지 않습니다.
+명령은 부작용 없는 PING/ECHO/INFO 뿐이고, 로그는 journald 에만 남습니다 (ECHO 내용은 기록하지 않음).
+
+```bash
+cd ~/library-project && git pull
+cd raspberry-pi
+.venv/bin/pip install -r requirements-ble.txt
+.venv/bin/python -m unittest discover -s tests -t .
+
+# 블루투스 켜짐·권한 확인
+sudo rfkill unblock bluetooth
+systemctl is-active bluetooth          # active
+id -nG | grep -wq bluetooth || sudo usermod -aG bluetooth pi
+
+# 수동 실행으로 먼저 확인 (Ctrl+C 로 종료)
+.venv/bin/python -m agent.ble_server
+
+# 서비스 등록
+sudo install -m 644 systemd/library-ble.service.example /etc/systemd/system/library-ble.service
+sudo systemctl daemon-reload && sudo systemctl enable --now library-ble
+journalctl -u library-ble -f           # ble.started, ble.subscribed, ble.command
+```
+
+- 광고 이름 `LIB-SEAT-PI` 로 Pi 의 블루투스 별칭(alias)이 바뀝니다.
+- 끄기: `sudo systemctl disable --now library-ble` (좌석 에이전트에는 영향 없음)
+- 보안: 페어링·암호화 없이 누구나 연결할 수 있으므로 상태를 바꾸는 명령은 넣지 않습니다. 추가하려면 `BLE_GATT_SPEC.md` 에 인증 방식을 먼저 설계합니다.
 
 ## 종료 코드
 
