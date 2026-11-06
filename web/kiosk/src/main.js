@@ -15,6 +15,7 @@ function navigate() {
   if (typeof cleanup === 'function') cleanup();
   root.replaceChildren();
   const render = routes[location.hash] ?? routes['#/'];
+  root.dataset.page = render === renderAdmin ? 'admin' : 'home'; // 화면별 레이아웃(폭) 구분용
   cleanup = render(root);
 }
 

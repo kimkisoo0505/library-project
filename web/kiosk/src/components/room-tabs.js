@@ -26,8 +26,9 @@ export function createRoomTabs({ onSelect }) {
         name.textContent = room.name;
 
         const count = document.createElement('span');
-        count.className = 'room-tab-count';
-        count.textContent = `${room.available} / ${room.total}`;
+        const full = Number(room.available) === 0;
+        count.className = `room-tab-count${full ? ' is-full' : ''}`;
+        count.textContent = full ? '만석' : `잔여 ${room.available}석`;
 
         button.append(name, count);
         button.setAttribute('aria-label', `${room.name}, 남은 좌석 ${room.available}석 / 전체 ${room.total}석`);
