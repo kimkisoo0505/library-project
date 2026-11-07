@@ -23,6 +23,7 @@ Arduino ──USB 시리얼──▶ agent ──HTTPS/WSS (외부 발신)──
 | `agent/remote_command.py` | 관리자 원격 명령(전원 끄기) 검증·실행 — `ALLOW_REMOTE_SHUTDOWN`, polkit 규칙 `system/50-library-agent-poweroff.rules` 필요 |
 | `agent/ble_protocol.py` | BLE 명령 처리 (PING/ECHO/INFO, 형식 검증, 속도 제한). 순수 함수, 부작용 없음 |
 | `agent/ble_server.py` | BLE GATT 서버 (bless/BlueZ). 모바일 앱 통신 시험용, **별도 서비스** `library-ble` |
+| `agent/arduino_rooms.py` | **아두이노 담당 열람실 LCD (B/C)** — `ARDUINO_ROOMS` 로 켬. 아두이노를 없앨 때 이 파일만 삭제 (방법: `arduino/README.md`) |
 | `agent/certs/` | 학교 서버가 빠뜨린 공개 중간 인증서 (RapidSSL TLS RSA CA G1, ~2027-11-02) |
 
 ## 안전 동작

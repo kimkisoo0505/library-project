@@ -64,3 +64,46 @@ KIND[,FIELD1[,FIELD2]]\n
 - `LED,<id>,<ON|OFF|BLINK>` — 상태 표시
 - `SERVO,<seq>,<angle>` — 안전 검토(전원 분리, 각도 제한, 수동 차단 스위치) 이후 추가
 - 체크섬 필드 — 노이즈 환경에서 필요 시
+
+---
+
+# ROOMLCD 펌웨어 (열람실 LCD 전용) v0.1
+
+아두이노가 담당하는 열람실(B, C)의 16x2 I2C LCD 표시용 펌웨어 `arduino/firmware/room_lcd/room_lcd.ino`.
+위의 버튼용 프로토콜과 같은 규칙(115200bps, 한 줄 ASCII, `\n`, 최대 64자)을 따르되 명령이 다릅니다.
+화면 내용(Welcome 애니메이션, 사용중/공석 숫자)은 **라즈베리파이가 모두 계산**하고, 아두이노는 받은 두 줄을 표시만 합니다.
+
+## 라즈베리파이 → 아두이노
+
+| 명령 | 의미 |
+|---|---|
+| `LCD,<0\|1>,<text>` | 0 = 1줄, 1 = 2줄. `text` 는 쉼표를 뺀 ASCII 출력 문자 0~16자 (공백 허용, 남는 칸은 공백으로 채움) |
+| `CLR` | 두 줄 모두 지움 |
+| `PING,<seq>` | 연결 확인 → `PONG,<seq>` |
+| `SERVO...` | **거부** → `ERR,SERVO_DISABLED` |
+
+라즈베리파이는 화면이 바뀔 때, 그리고 **10초마다** 두 줄을 다시 보냅니다 (감시 타이머 유지).
+
+## 아두이노 → 라즈베리파이
+
+| 메시지 | 의미 |
+|---|---|
+| `HELLO,ROOMLCD-0.1.0` | 부팅 완료 (USB 포트를 열면 UNO 가 리셋되므로 연결 때마다 옴) |
+| `PONG,<seq>` | PING 응답 |
+| `ERR,LCD_NOT_FOUND,<주소>` | I2C LCD 가 응답하지 않음 (배선/주소 확인) |
+| `ERR,<BAD_ROW\|BAD_TEXT\|BAD_ARGS\|LINE_TOO_LONG\|UNKNOWN_CMD\|SERVO_DISABLED>` | 명령 오류 |
+
+## 안전 동작
+- **30초 동안 명령이 없으면** 아두이노가 스스로 2줄에 `Offline` 을 표시합니다 (라즈베리파이가 멈춰도 틀린 숫자를 계속 보여주지 않음).
+- 부팅 직후 화면: `Library` / `Waiting for Pi`.
+- 서보모터·블루투스 기능은 없습니다.
+
+## 하드웨어
+| LCD 핀 | UNO 핀 |
+|---|---|
+| GND | GND |
+| VCC | 5V |
+| SDA | A4 |
+| SCL | A5 |
+
+I2C 주소는 펌웨어의 `#define LCD_ADDR` (열람실 B 아두이노: `0x3F`).

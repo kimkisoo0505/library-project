@@ -44,8 +44,13 @@ class EventHandler:
         self._cloud: CloudPort | None = None
         self._serial: SerialPortManager | None = None
         self._display: WelcomeDisplay | None = None
+        self._extra_displays: list[WelcomeDisplay] = []   # 다른 열람실 LCD (예: 아두이노 담당 B/C)
         self._on_command: Callable[[dict[str, Any]], Awaitable[Any]] | None = None
         self._log = get_logger("events")
+
+    def add_welcome_display(self, display: WelcomeDisplay) -> None:
+        """착석 알림 시 Welcome 을 띄울 열람실 LCD 를 추가한다 (열람실 코드로 구분)."""
+        self._extra_displays.append(display)
 
     def attach(
         self,
@@ -151,17 +156,18 @@ class EventHandler:
     # ----- 내부 -----
 
     def _maybe_welcome(self, message: dict[str, Any]) -> None:
-        """이 장치 담당 열람실 좌석의 착석 알림이면 LCD 에 Welcome 표시."""
-        if self._display is None or message.get("reason") != CHECK_IN_REASON:
+        """착석 알림이면 그 좌석이 속한 열람실의 LCD 에 Welcome 표시."""
+        displays = ([self._display] if self._display is not None else []) + self._extra_displays
+        if not displays or message.get("reason") != CHECK_IN_REASON:
             return
         try:
             seat = self._seats.get(int(message.get("seat_id")))
         except (TypeError, ValueError, KeyError):
             return
-        if seat.room != self._display.room:
-            return
-        self._display.show_welcome()
-        log_event(self._log, "lcd.welcome", "착석 확인 - Welcome 표시", room=seat.room, seat=seat.label)
+        for display in displays:
+            if display.room == seat.room:
+                display.show_welcome()
+                log_event(self._log, "lcd.welcome", "착석 확인 - Welcome 표시", room=seat.room, seat=seat.label)
 
     async def _send_status(self) -> None:
         if self._serial is None or not self._serial.connected:

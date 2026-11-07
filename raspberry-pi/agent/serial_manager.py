@@ -201,7 +201,17 @@ class SerialManager:
 
     async def send(self, kind: str, *fields: str) -> bool:
         """명령 전송. 연결되어 있지 않으면 False. 금지/형식 오류 명령은 ProtocolError."""
-        data = build_command(kind, *fields)
+        return await self.send_line(build_command(kind, *fields), kind=kind)
+
+    async def send_line(self, data: bytes, *, kind: str = "RAW") -> bool:
+        """이미 검증된 한 줄(끝이 '\\n', 64자 이하 ASCII)을 그대로 보낸다.
+
+        펌웨어 전용 명령(예: 열람실 LCD 문자열)은 그 모듈이 직접 만들고 검증한 뒤 이 메서드로 보낸다.
+        """
+        if not data.endswith(b"\n") or len(data) > MAX_LINE_LENGTH + 1 or b"\n" in data[:-1]:
+            raise ProtocolError("한 줄 명령이 아닙니다")
+        if kind.upper().startswith("SERVO") or data.upper().startswith(b"SERVO"):
+            raise ProtocolError("서보 명령은 현재 단계에서 비활성화되어 있습니다.")
         ser = self._serial
         if ser is None:
             log_event(self._log, "serial.send_skipped", "연결 없음 - 전송 생략", level=logging.DEBUG, kind=kind)

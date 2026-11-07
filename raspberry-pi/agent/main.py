@@ -16,6 +16,7 @@ from pathlib import Path
 from . import __version__
 from .cloud_client import CloudClient, CloudRequestRejected, CloudUnavailableError
 from .config import AgentConfig, ConfigError, load_config, load_dotenv_file
+from . import arduino_rooms                                         # arduino_rooms (제거 시 이 줄 삭제)
 from .device_status import DeviceStatusReporter
 from .remote_command import RemoteCommandHandler
 from .event_handler import EventHandler
@@ -86,6 +87,18 @@ async def _lcd_loop(lcd, display: RoomDisplay, stop: asyncio.Event, colors: tupl
         lcd.close()
 
 
+class _DisabledSerial:
+    """SERIAL_PORT=none 일 때 쓰는 빈 시리얼 (기존 버튼용 시리얼을 끄고 포트를 아두이노 열람실 LCD 에 양보)."""
+
+    connected = False
+
+    async def send(self, kind: str, *fields: str) -> bool:
+        return False
+
+    async def run(self, stop: asyncio.Event) -> None:
+        await stop.wait()
+
+
 async def run_agent(config: AgentConfig) -> None:
     log = get_logger("main")
     stop = asyncio.Event()
@@ -109,7 +122,10 @@ async def run_agent(config: AgentConfig) -> None:
         on_message=handler.on_serial_message,
         on_connection_change=handler.on_serial_connection_change,
         reconnect_seconds=config.serial_reconnect_seconds,
-    )
+    ) if config.serial_enabled else _DisabledSerial()
+    arduino_links = arduino_rooms.create_links(config, seats)       # 아두이노 담당 열람실 LCD (B, C)
+    for link in arduino_links:                                       # arduino_rooms
+        handler.add_welcome_display(link.display)                    # arduino_rooms
 
     async with CloudClient(
         config,
@@ -159,6 +175,10 @@ async def run_agent(config: AgentConfig) -> None:
                 "serial": serial.connected,                                 # Arduino USB 연결
                 "central_library": None if relay is None else relay.last_ok,
             }
+
+        for link in arduino_links:                                    # arduino_rooms
+            tasks.append(asyncio.create_task(                        # arduino_rooms
+                link.run(stop, cloud, lambda: seats.cloud_online), name=f"arduino-{link.room}"))  # arduino_rooms
 
         reporter = DeviceStatusReporter(
             cloud, room=config.device_room, is_online=lambda: seats.cloud_online, components=components

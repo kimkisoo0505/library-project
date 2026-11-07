@@ -65,18 +65,26 @@ class CloudClient:
             await self._http.aclose()
             self._http = None
 
-    def _device_headers(self) -> dict[str, str]:
+    def _device_headers(self, device_id: str | None = None) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._config.device_token}",
-            "X-Device-Id": self._config.device_id,
+            "X-Device-Id": device_id or self._config.device_id,
         }
 
-    async def _request(self, method: str, path: str, *, device_auth: bool, body: dict[str, Any] | None = None) -> Any:
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        device_auth: bool,
+        body: dict[str, Any] | None = None,
+        device_id: str | None = None,
+    ) -> Any:
         import httpx
 
         if self._http is None:
             raise RuntimeError("CloudClient 는 async with 블록 안에서 사용해야 합니다")
-        headers = self._device_headers() if device_auth else {}
+        headers = self._device_headers(device_id) if device_auth else {}
         try:
             response = await self._http.request(method, path, json=body, headers=headers)
         except httpx.HTTPError as exc:
@@ -108,9 +116,12 @@ class CloudClient:
         """중앙/금화도서관 공석 원본을 서버로 중계 (서버가 다시 검증/정규화)."""
         return await self._request("POST", "/api/device/central-library", device_auth=True, body=payload)
 
-    async def post_device_status(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """장치 상태(네트워크, LCD, 중계 결과) 보고."""
-        return await self._request("POST", "/api/device/status", device_auth=True, body=payload)
+    async def post_device_status(self, payload: dict[str, Any], *, device_id: str | None = None) -> dict[str, Any]:
+        """장치 상태(네트워크, LCD, 중계 결과) 보고.
+
+        device_id 를 주면 라즈베리파이가 USB 로 연결된 다른 장치(예: 열람실 B 아두이노)를 대신해 보고한다.
+        """
+        return await self._request("POST", "/api/device/status", device_auth=True, body=payload, device_id=device_id)
 
     async def run_websocket(self, stop_event: asyncio.Event) -> None:
         """좌석 변경 알림 구독. 끊기면 1초~60초 지수 백오프로 재연결."""

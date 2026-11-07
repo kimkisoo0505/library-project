@@ -51,6 +51,14 @@ class AgentConfig:
     # 경기대 중앙/금화도서관 공석 중계
     central_library_relay: bool = False
     central_library_interval_seconds: float = 60.0
+    # 아두이노가 담당하는 열람실 LCD: ((열람실, 시리얼 포트), ...). 비어 있으면 사용 안 함
+    # (아두이노 관련 코드는 agent/arduino_rooms.py 에 분리되어 있음)
+    arduino_rooms: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def serial_enabled(self) -> bool:
+        """기존 버튼용 시리얼(SERIAL_PORT). 'none' 이면 사용하지 않는다."""
+        return self.serial_port.lower() not in ("none", "off", "disabled")
 
     def redacted(self) -> dict[str, Any]:
         """로그 출력용: 비밀 값을 가린 설정 사본."""
@@ -73,6 +81,7 @@ class AgentConfig:
             "allow_remote_shutdown": self.allow_remote_shutdown,
             "central_library_relay": self.central_library_relay,
             "central_library_interval_seconds": self.central_library_interval_seconds,
+            "arduino_rooms": [f"{room}={port}" for room, port in self.arduino_rooms],
         }
 
 
@@ -139,6 +148,30 @@ def _get_rgb(env: Mapping[str, str], key: str, default: tuple[int, int, int]) ->
     return rgb  # type: ignore[return-value]
 
 
+def parse_arduino_rooms(raw: str, device_room: str) -> tuple[tuple[str, str], ...]:
+    """'B=/dev/serial/by-id/usb-Arduino...-if00,C=/dev/ttyACM1' -> (('B', ...), ('C', ...))"""
+    rooms: list[tuple[str, str]] = []
+    seen_rooms: set[str] = set()
+    seen_ports: set[str] = set()
+    for item in (part.strip() for part in raw.split(",")):
+        if not item:
+            continue
+        room, sep, port = item.partition("=")
+        room, port = room.strip().upper(), port.strip()
+        if not sep or len(room) != 1 or not ("A" <= room <= "Z"):
+            raise ConfigError(f"ARDUINO_ROOMS 형식 오류 (예: B=/dev/serial/by-id/...): {item!r}")
+        if room == device_room:
+            raise ConfigError(f"ARDUINO_ROOMS 의 {room} 은 이 라즈베리파이가 직접 담당하는 열람실입니다.")
+        if not port.startswith("/dev/") or any(ch.isspace() or ch in ",;" for ch in port):
+            raise ConfigError(f"ARDUINO_ROOMS 의 포트는 /dev/ 로 시작해야 합니다: {port!r}")
+        if room in seen_rooms or port in seen_ports:
+            raise ConfigError(f"ARDUINO_ROOMS 에 열람실 또는 포트가 중복되었습니다: {item!r}")
+        seen_rooms.add(room)
+        seen_ports.add(port)
+        rooms.append((room, port))
+    return tuple(rooms)
+
+
 def validate_http_url(url: str, key: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme == "https" and parsed.netloc:
@@ -202,12 +235,17 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
     if len(device_room) != 1 or not ("A" <= device_room <= "Z"):
         raise ConfigError(f"DEVICE_ROOM 은 열람실 코드 한 글자(A~Z)여야 합니다: {device_room!r}")
 
+    serial_port = _get_str(source, "SERIAL_PORT", "/dev/ttyACM0")
+    arduino_rooms = parse_arduino_rooms(source.get("ARDUINO_ROOMS", ""), device_room)
+    if serial_port.lower() not in ("none", "off", "disabled") and serial_port in {p for _, p in arduino_rooms}:
+        raise ConfigError("SERIAL_PORT 와 ARDUINO_ROOMS 가 같은 포트를 씁니다. 기존 버튼 시리얼은 SERIAL_PORT=none 으로 끄세요.")
+
     return AgentConfig(
         api_base_url=api_base_url,
         ws_url=ws_url,
         device_id=_get_str(source, "LIBRARY_DEVICE_ID", "library-server"),
         device_token=device_token,
-        serial_port=_get_str(source, "SERIAL_PORT", "/dev/ttyACM0"),
+        serial_port=serial_port,
         serial_baudrate=int(_get_number(source, "SERIAL_BAUDRATE", 115200, minimum=1200, maximum=1_000_000)),
         serial_reconnect_seconds=_get_number(source, "SERIAL_RECONNECT_SECONDS", 5.0, minimum=0.5, maximum=300),
         heartbeat_seconds=_get_number(source, "HEARTBEAT_SECONDS", 10.0, minimum=1, maximum=3600),
@@ -233,4 +271,5 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         central_library_interval_seconds=_get_number(
             source, "CENTRAL_LIBRARY_INTERVAL_SECONDS", 60.0, minimum=30, maximum=3600
         ),
+        arduino_rooms=arduino_rooms,
     )
