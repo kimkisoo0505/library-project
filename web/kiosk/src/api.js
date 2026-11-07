@@ -93,7 +93,11 @@ export const api = {
   myReservation: () => request('/reservations/me', { auth: 'student' }),
   createReservation: (seatId) => request('/reservations', { method: 'POST', auth: 'student', body: { seat_id: seatId } }),
   cancelReservation: (id) => request(`/reservations/${encodeURIComponent(id)}`, { method: 'DELETE', auth: 'student' }),
-  checkIn: (id) => request(`/reservations/${encodeURIComponent(id)}/check-in`, { method: 'POST', auth: 'student' }),
+  /** 착석 + 이용 시간(1~4시간) */
+  checkIn: (id, hours) =>
+    request(`/reservations/${encodeURIComponent(id)}/check-in`, { method: 'POST', auth: 'student', body: { hours } }),
+  /** 재실 확인 (모바일 앱이 블루투스로 열람실 장치와 연결되었을 때). 남은 시간이 2시간 미만이면 2시간으로 */
+  presence: () => request('/reservations/me/presence', { method: 'POST', auth: 'student', body: {} }),
   checkOut: (id) => request(`/reservations/${encodeURIComponent(id)}/check-out`, { method: 'POST', auth: 'student' }),
 
   adminListSeats: () => request('/admin/seats', { auth: 'admin' }),

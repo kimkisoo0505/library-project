@@ -34,7 +34,7 @@ async function querySeats(env) {
     `SELECT s.id, s.label, s.seat_no, s.status AS seat_status, s.updated_at,
             rm.code AS room_code, rm.name AS room_name, rm.sort_order AS room_order,
             r.id AS reservation_id, r.student_id, r.status AS reservation_status,
-            r.reserved_at, r.expires_at, r.checked_in_at
+            r.reserved_at, r.expires_at, r.checked_in_at, r.usage_hours, r.usage_ends_at
        FROM seats s
        JOIN rooms rm ON rm.id = s.room_id
        LEFT JOIN reservations r
@@ -81,9 +81,14 @@ function toPublicSeat(row, viewerStudentId) {
     state: seatState(row),
     mine,
   };
+  // 이용 종료 시각은 누구나 볼 수 있다 (곧 비는 자리 안내, 학생 식별 정보 아님).
+  if (row.reservation_status === 'occupied' && row.usage_ends_at) {
+    seat.usage_ends_at = row.usage_ends_at;
+  }
   if (mine) {
     seat.reservation_id = row.reservation_id;
     seat.expires_at = row.expires_at;
+    seat.usage_hours = row.usage_hours ?? null;
   }
   return seat;
 }

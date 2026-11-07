@@ -12,6 +12,7 @@ import {
   handleCancelReservation,
   handleCheckIn,
   handleCheckOut,
+  handlePresence,
   handleAdminReleaseReservation,
   handleAdminEvents,
   handleDeviceEvent,
@@ -41,6 +42,7 @@ const router = new Router()
   // 학생 예약
   .post('/api/reservations', handleCreateReservation)
   .get('/api/reservations/me', handleMyReservation)
+  .post('/api/reservations/me/presence', handlePresence)
   .delete('/api/reservations/:id', handleCancelReservation)
   .post('/api/reservations/:id/check-in', handleCheckIn)
   .post('/api/reservations/:id/check-out', handleCheckOut)

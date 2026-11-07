@@ -103,10 +103,22 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 | 메서드 | 경로 | 설명 | 상태 전이 |
 |---|---|---|---|
 | POST | `/reservations` | 예약 생성 `{ "seat_id": 35 }` (전체 고유 좌석 id, 35 = B05) → 201 | (없음) → reserved |
-| GET | `/reservations/me` | 내 활성 예약 (`room`, `room_name`, `seat_label` 포함, `reservation: null` 가능) | — |
+| GET | `/reservations/me` | 내 활성 예약 (`room`, `room_name`, `seat_label`, `usage_hours`, `usage_ends_at`, `last_presence_at` 포함, `reservation: null` 가능) | — |
 | DELETE | `/reservations/:id` | 예약 취소 | reserved → cancelled |
-| POST | `/reservations/:id/check-in` | 착석 (기한 내) | reserved → occupied |
+| POST | `/reservations/:id/check-in` | 착석 (기한 내) + 이용 시간 `{ "hours": 1~4 }` (필수) | reserved → occupied |
 | POST | `/reservations/:id/check-out` | 퇴실 | occupied → completed |
+| POST | `/reservations/me/presence` | 재실 확인 `{}` (모바일 앱, 블루투스 연결 중) — 남은 시간이 2시간 미만이면 2시간으로 | occupied 유지 |
+
+이용 시간 (migration 0005):
+- 착석 시 `hours`(1~4)를 고르면 `usage_ends_at = 착석 시각 + hours`. 잘못된 값은 `400 invalid_usage_hours`.
+- `usage_ends_at` 이 지나면 Cron(1분)이 자동 퇴실 → `completed`, `end_reason = 'time_expired'` (최대 약 1분 늦을 수 있음).
+- 재실 확인: `usage_ends_at = max(usage_ends_at, 지금 + 2시간)`. 줄이지는 않는다. 이미 끝난 예약은 연장하지 않으며,
+  블루투스 장치가 있는 열람실(현재 A) 좌석만 대상이다. 대상이 없으면 `409 no_presence_target`.
+  응답 `{ "reservation": { id, seat_id, usage_hours, usage_ends_at, last_presence_at }, "extended": bool, "keep_minutes": 120 }`.
+  10분 넘게 확인이 없다가 다시 오면 `reservation.presence_returned` 이벤트를 남기고 좌석 변경을 방송한다.
+- **보안 한계 (사용자 결정, 2026-11-07)**: 재실 보고는 앱이 학생 세션으로 직접 보낸다. 서버는 블루투스 근접을 검증하지 않으므로
+  조작된 클라이언트는 열람실 밖에서도 보고할 수 있다. 필요해지면 Pi 경유 일회용 코드 방식으로 강화한다.
+- `GET /seats` 의 착석 좌석에는 `usage_ends_at` 이 포함된다 (누구나 볼 수 있음, 학생 식별 정보 없음). 내 좌석에는 `usage_hours` 도 포함.
 
 예약 생성 오류:
 - `409 seat_already_reserved` — 다른 사용자가 먼저 예약

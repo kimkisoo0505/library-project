@@ -57,8 +57,16 @@ function formatTime(iso) {
 function formatLeft(ms) {
   if (!Number.isFinite(ms)) return '--:--';
   const t = Math.max(0, Math.ceil(ms / 1000));
-  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  const h = Math.floor(t / 3600);
+  const mm = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
+  const ss = String(t % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
+
+/** 이용 시간 선택지 (서버 규칙: 1~4시간) */
+const USAGE_HOUR_CHOICES = [1, 2, 3, 4];
+const USAGE_URGENT_MS = 10 * 60_000;     // 이용 종료 10분 전부터 강조
+const EXPIRED_RELOAD_MS = 20_000;        // 종료 시각이 지난 뒤 서버 자동 퇴실(1분 주기)을 기다리며 다시 조회
 
 /** 학생용 키오스크 화면 */
 export function renderHome(root) {
@@ -419,13 +427,20 @@ export function renderHome(root) {
     });
   }
 
-  // ----- 상태(히어로) 카드 -----
-  let countdownEl = null;
-  let countdownTarget = NaN;
-  let expiryReloadRequested = false;
+  // ----- 남은 시간 표시 (표시 전용: 만료·자동 퇴실 판단은 서버가 한다) -----
+  /** @type {Set<{node: HTMLElement, target: number, urgentMs: number}>} */
+  const liveCountdowns = new Set();
+  let lastExpiredReload = 0;
+
+  function liveCountdown(targetIso, tag, className, urgentMs) {
+    const target = Date.parse(targetIso ?? '');
+    const node = el(tag, className, formatLeft(target - Date.now()));
+    node.setAttribute('aria-hidden', 'true'); // 1초마다 바뀌는 숫자를 화면 낭독기가 읽지 않도록
+    liveCountdowns.add({ node, target, urgentMs });
+    return node;
+  }
 
   function renderHero() {
-    countdownEl = null;
     const box = el('div', 'hero');
 
     if (!state.user) {
@@ -449,22 +464,24 @@ export function renderHome(root) {
       if (mine.state === 'reserved') {
         left.append(el('div', 'k', `예약 완료 · ${roomName(mine.room)}`), el('div', 'v', `${mine.label} 좌석`));
         const right = el('div', 'right');
-        const target = Date.parse(mine.expires_at ?? '');
-        if (target !== countdownTarget) { countdownTarget = target; expiryReloadRequested = false; }
-        countdownEl = el('div', 'countdown', formatLeft(target - Date.now()));
-        countdownEl.setAttribute('aria-hidden', 'true');
-        right.append(el('div', 'k', '착석까지'), countdownEl);
+        right.append(el('div', 'k', '착석까지'), liveCountdown(mine.expires_at, 'div', 'countdown', URGENT_MS));
         top.append(left, right);
         box.append(top, el('div', 'd', `${formatTime(mine.expires_at)}까지 착석하지 않으면 예약이 자동 취소됩니다.`));
         btns.append(
-          actionButton('착석했어요', 'hbtn w', () => runAction(() => api.checkIn(mine.reservation_id), '착석 처리되었습니다.')),
+          actionButton('착석했어요', 'hbtn w', () => openHours(mine)),
           actionButton('예약 취소', 'hbtn g', () => confirmCancel(mine)),
         );
-        updateCountdown();
       } else if (mine.state === 'occupied') {
         left.append(el('div', 'k', `이용 중 · ${roomName(mine.room)}`), el('div', 'v', `${mine.label} 좌석`));
         top.append(left);
-        box.append(top, el('div', 'd', '공부를 마치면 꼭 [퇴실]을 눌러 주세요. 다음 사람에게 바로 자리가 돌아가요.'));
+        if (mine.usage_ends_at) {
+          const right = el('div', 'right');
+          right.append(el('div', 'k', '남은 이용 시간'), liveCountdown(mine.usage_ends_at, 'div', 'countdown', USAGE_URGENT_MS));
+          top.append(right);
+          box.append(top, el('div', 'd', `${formatTime(mine.usage_ends_at)}까지 이용할 수 있어요. 시간이 끝나면 자동으로 퇴실돼요.`));
+        } else {
+          box.append(top, el('div', 'd', '공부를 마치면 꼭 [퇴실]을 눌러 주세요. 다음 사람에게 바로 자리가 돌아가요.'));
+        }
         btns.append(
           actionButton('퇴실하기', 'hbtn w', () => confirmCheckOut(mine)),
           actionButton('내 자리 보기', 'hbtn g', () => showMySeatOnMap(mine)),
@@ -492,13 +509,17 @@ export function renderHome(root) {
   }
 
   function updateCountdown() {
-    if (!countdownEl || !countdownEl.isConnected) return;
-    const left = countdownTarget - Date.now();
-    countdownEl.textContent = formatLeft(left);
-    countdownEl.classList.toggle('is-urgent', left < URGENT_MS);
-    // 만료 처리는 서버가 한다. 화면은 시간이 지나면 서버 상태를 한 번 다시 조회할 뿐이다.
-    if (left <= 0 && !expiryReloadRequested) {
-      expiryReloadRequested = true;
+    let anyExpired = false;
+    for (const c of liveCountdowns) {
+      if (!c.node.isConnected) { liveCountdowns.delete(c); continue; }
+      const left = c.target - Date.now();
+      c.node.textContent = formatLeft(left);
+      c.node.classList.toggle('is-urgent', left < c.urgentMs);
+      if (left <= 0) anyExpired = true;
+    }
+    // 만료·자동 퇴실은 서버가 처리한다(1분 주기). 화면은 시간이 지나면 서버 상태를 다시 조회할 뿐이다.
+    if (anyExpired && Date.now() - lastExpiredReload > EXPIRED_RELOAD_MS) {
+      lastExpiredReload = Date.now();
       loadSeats();
     }
   }
@@ -579,6 +600,12 @@ export function renderHome(root) {
     now.append(el('div', 'card-title', '지금 내 좌석'));
     if (mine) {
       now.append(el('p', 'my-now', `${roomName(mine.room)} ${mine.label} · ${STATE_LABELS[mine.state] ?? ''}`));
+      if (mine.state === 'occupied' && mine.usage_ends_at) {
+        const left = el('p', 'my-left');
+        left.append('남은 이용 시간 ', liveCountdown(mine.usage_ends_at, 'b', 'inline-countdown', USAGE_URGENT_MS),
+          ` · ${formatTime(mine.usage_ends_at)}까지`);
+        now.append(left, el('p', 'note', '시간이 끝나면 자동으로 퇴실돼요.'));
+      }
       now.append(actionButton('내 자리 보기', 'cta ghost', () => showMySeatOnMap(mine)));
     } else {
       now.append(el('p', 'note', '이용 중인 좌석이 없어요. 좌석 탭에서 예약할 수 있어요.'));
@@ -652,6 +679,11 @@ export function renderHome(root) {
     openSheet({ kind: 'confirm', confirm });
   }
 
+  /** 착석 시 이용 시간 선택 (1~4시간) */
+  function openHours(mine) {
+    openSheet({ kind: 'hours', confirm: { reservationId: mine.reservation_id } });
+  }
+
   function renderSheet(force = false) {
     if (sheetState.kind === 'login') {
       if (state.user) { closeSheet(); return; }
@@ -664,6 +696,29 @@ export function renderHome(root) {
       const seat = state.seats.find((s) => s.id === state.selectedSeatId);
       if (!seat) { closeSheet(); return; }
       sheetBody.replaceChildren(...seatSheetContent(seat));
+      return;
+    }
+    if (sheetState.kind === 'hours') {
+      const c = sheetState.confirm;
+      const mine = mySeat();
+      if (!state.user || mine?.reservation_id !== c.reservationId || mine.state !== 'reserved') { closeSheet(); return; }
+      const title = el('div', 'sh-title');
+      title.append(el('b', 'small', '몇 시간 이용할까요?'));
+      const grid = el('div', 'hours-grid');
+      for (const h of USAGE_HOUR_CHOICES) {
+        grid.append(actionButton(`${h}시간`, 'cta', async () => {
+          const ok = await runAction(() => api.checkIn(c.reservationId, h), `착석 처리되었습니다. ${h}시간 이용할 수 있어요.`);
+          if (ok) closeSheet();
+        }));
+      }
+      const actions = el('div', 'actions');
+      actions.append(actionButton('돌아가기', 'cta ghost', () => closeSheet()));
+      sheetBody.replaceChildren(
+        title,
+        el('div', 'sh-sub', `${roomName(mine.room)} ${mine.label} 좌석 · 시간이 끝나면 자동으로 퇴실돼요. [퇴실]로 언제든 먼저 끝낼 수 있어요.`),
+        grid,
+        actions,
+      );
       return;
     }
     if (sheetState.kind === 'confirm') {
@@ -691,6 +746,12 @@ export function renderHome(root) {
     const tags = el('div', 'tags');
     tags.append(el('span', 'tag', '좌석 정보(콘센트·창가 등) · 기능 추가 예정'));
     const parts = [title, el('div', 'sh-sub', roomName(seat.room)), tags];
+    if (seat.state === 'occupied' && seat.usage_ends_at) {
+      const left = el('p', 'seat-left');
+      left.append('남은 이용 시간 ', liveCountdown(seat.usage_ends_at, 'b', 'inline-countdown', USAGE_URGENT_MS),
+        ` · ${formatTime(seat.usage_ends_at)}까지`);
+      parts.push(left);
+    }
 
     const actions = el('div', 'actions');
     const mine = mySeat();

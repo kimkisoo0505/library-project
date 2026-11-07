@@ -61,7 +61,7 @@ CREATE INDEX IF NOT EXISTS ix_seats_room ON seats (room_id, seat_no);
 -- 예약 및 이용 기록
 --   reserved  : 예약됨 (expires_at 이전에 착석 필요)
 --   occupied  : 착석 중
---   completed : 퇴실 완료
+--   completed : 퇴실 완료 (직접 퇴실 또는 이용 시간 종료 자동 퇴실)
 --   cancelled : 취소됨 (학생 또는 관리자)
 --   expired   : 착석 시간 초과로 자동 만료
 CREATE TABLE IF NOT EXISTS reservations (
@@ -74,7 +74,12 @@ CREATE TABLE IF NOT EXISTS reservations (
     checked_in_at   TEXT,
     checked_out_at  TEXT,
     ended_at        TEXT,
-    end_reason      TEXT
+    end_reason      TEXT,
+    -- 이용 시간 (0005): 착석 시 1~4시간 선택, 종료 시각이 지나면 자동 퇴실(time_expired)
+    usage_hours     INTEGER CHECK (usage_hours IS NULL OR usage_hours BETWEEN 1 AND 4),
+    usage_ends_at   TEXT,
+    -- 마지막 재실 확인(모바일 앱 블루투스) 시각. 이동 기록은 저장하지 않는다.
+    last_presence_at TEXT
 );
 
 -- [중복 예약 방지 핵심] 활성 예약은 좌석당 1건, 학생당 1건만 허용 (DB가 원자적으로 보장)
@@ -84,6 +89,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_reservations_active_student
     ON reservations (student_id) WHERE status IN ('reserved', 'occupied');
 CREATE INDEX IF NOT EXISTS ix_reservations_status_expires
     ON reservations (status, expires_at);
+CREATE INDEX IF NOT EXISTS ix_reservations_status_usage_ends
+    ON reservations (status, usage_ends_at);
 
 -- 감사/이벤트 로그 (비밀번호, 토큰은 절대 기록하지 않음)
 CREATE TABLE IF NOT EXISTS events (

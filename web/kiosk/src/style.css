@@ -385,3 +385,10 @@ h2 { font-size: 1.1rem; }
   .device-item .device-meta, .device-item .btn { grid-column: 2; justify-self: start; }
   .data-table { font-size: 0.8rem; }
 }
+
+/* 이용 시간 선택 / 남은 시간 */
+.hours-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 4px; }
+.hours-grid .btn.cta { margin: 0; padding-left: 0; padding-right: 0; }
+.inline-countdown { font-variant-numeric: tabular-nums; }
+.inline-countdown.is-urgent { color: var(--danger, #d93025); }
+.my-left, .seat-left { margin: 6px 0 0; font-size: 14px; }

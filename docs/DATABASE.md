@@ -78,15 +78,21 @@ events (seat_id, reservation_id, actor_* 로 느슨하게 참조)
 | status | `reserved` → `occupied` → `completed`, 또는 `cancelled` / `expired` |
 | reserved_at, expires_at | 예약 시각, 착석 기한 |
 | checked_in_at, checked_out_at | 착석/퇴실 시각 |
-| ended_at, end_reason | 종료 시각, `user_cancelled` / `hold_timeout` / `checked_out` / `admin_release` |
+| ended_at, end_reason | 종료 시각, `user_cancelled` / `hold_timeout` / `checked_out` / `time_expired` / `admin_release` |
+| usage_hours | 착석 시 고른 이용 시간 1~4 (0005) |
+| usage_ends_at | 이용 종료 시각. 지나면 Cron(1분)이 자동 퇴실 (`time_expired`). 재실 확인 시 남은 시간이 2시간 미만이면 "지금+2시간"으로 올림 |
+| last_presence_at | 마지막 재실 확인(모바일 앱 블루투스) 시각. 1개 값만 덮어쓰며 이동 기록은 남기지 않음 |
 
 상태 전이:
 ```
           ┌── cancel ──▶ cancelled
 reserved ─┼── 기한 초과 ─▶ expired
-          └── check-in ─▶ occupied ── check-out ─▶ completed
+          └── check-in(1~4시간) ─▶ occupied ─┬─ check-out ──────────▶ completed (checked_out)
+                                              └─ usage_ends_at 경과 ─▶ completed (time_expired)
 관리자 해제: reserved → cancelled, occupied → completed
+재실 확인: occupied 유지, usage_ends_at = max(usage_ends_at, 지금+2시간)
 ```
+마이그레이션 0005 적용 시점에 이미 착석 중이던 예약은 `usage_hours = 4`, `usage_ends_at = 적용 시각 + 4시간`으로 채웁니다.
 
 ### events — 감사 로그
 `occurred_at, source(web/admin/device/system), event_type, actor_type, actor_id, seat_id, reservation_id, payload(JSON)`
