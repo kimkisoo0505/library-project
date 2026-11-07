@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS rooms (
     code            TEXT    NOT NULL UNIQUE CHECK (length(code) = 1 AND code BETWEEN 'A' AND 'Z'),
     name            TEXT    NOT NULL,
     sort_order      INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- 0006_room_location: 강의실 위치(호수), 관리자가 입력. 빈 문자열 = 미입력
+    location        TEXT    NOT NULL DEFAULT '' CHECK (length(location) <= 40)
 );
 
 -- 좌석 (열람실별 30석, 전체 90석). id 는 전체에서 고유: A=1~30, B=31~60, C=61~90

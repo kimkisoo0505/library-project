@@ -64,9 +64,9 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 ```json
 {
   "rooms": [
-    { "code": "A", "name": "열람실 A", "total": 30, "available": 28 },
-    { "code": "B", "name": "열람실 B", "total": 30, "available": 30 },
-    { "code": "C", "name": "열람실 C", "total": 30, "available": 30 }
+    { "code": "A", "name": "열람실 A", "location": "00관 000호", "total": 30, "available": 28 },
+    { "code": "B", "name": "열람실 B", "location": "", "total": 30, "available": 30 },
+    { "code": "C", "name": "열람실 C", "location": "", "total": 30, "available": 30 }
   ],
   "seats": [
     { "id": 1, "room": "A", "seat_no": 1, "label": "A01", "state": "available", "mine": false },
@@ -136,6 +136,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 |---|---|---|
 | GET | `/admin/seats?room=A` | 열람실 요약 + 좌석 + 활성 예약 상세 (`room` 생략 시 전체) |
 | POST | `/admin/seats/:id/status` | `{ "status": "maintenance" \| "available", "reason": "..." }` 활성 예약이 있으면 `409 seat_in_use` |
+| POST | `/admin/rooms/:code/location` | 강의실 위치(호수) 저장 `{ "location": "00관 000호" }` — 앞뒤 공백 제거, 최대 40자, 빈 문자열이면 지움. `<`, `>`, 제어 문자는 `400 invalid_parameter`. 없는 열람실 `404 room_not_found`. 이벤트 `room.location_changed` 기록 후 `seats.changed` 알림 |
 | POST | `/admin/reservations/:id/release` | 활성 예약 강제 해제 `{ "reason": "..." }` (사유 필수) |
 | GET | `/admin/events?limit=50&before_id=` | 이벤트 로그 최신순 (limit 1~200) |
 | POST | `/admin/devices/:room/shutdown` | 라즈베리파이 원격 종료 `{ "confirm": "SHUTDOWN" }` → 202. 장치가 90초 내 보고가 없으면 `409 device_offline`, 실시간 연결이 없으면 `409 device_not_listening`. 아두이노 열람실은 `400 unsupported_device` |

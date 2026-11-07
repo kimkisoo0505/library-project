@@ -109,6 +109,8 @@ export const api = {
   checkOut: (id) => request(`/reservations/${encodeURIComponent(id)}/check-out`, { method: 'POST', auth: 'student' }),
 
   adminListSeats: () => request('/admin/seats', { auth: 'admin' }),
+  adminSetRoomLocation: (roomCode, location) =>
+    request(`/admin/rooms/${encodeURIComponent(roomCode)}/location`, { method: 'POST', auth: 'admin', body: { location } }),
   adminSetSeatStatus: (seatId, status, reason = '') =>
     request(`/admin/seats/${encodeURIComponent(seatId)}/status`, { method: 'POST', auth: 'admin', body: { status, reason } }),
   adminReleaseReservation: (id, reason) =>

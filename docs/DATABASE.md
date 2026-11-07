@@ -47,6 +47,7 @@ events (seat_id, reservation_id, actor_* 로 느슨하게 참조)
 | code | `A` / `B` / `C` (대문자 한 글자) |
 | name | `열람실 A` 등 화면 표시 이름 |
 | sort_order | 표시 순서 |
+| location | 강의실 위치(호수), 예: `00관 000호`. 관리자가 입력, 빈 문자열 = 미입력, 최대 40자 (0006_room_location) |
 
 ### seats — 좌석 (3실 × 30석 = 90석)
 | 컬럼 | 설명 |

@@ -5,7 +5,7 @@
  */
 import { Router, json, errorResponse } from './router.js';
 import { handleStudentLogin, handleAdminLogin, handleLogout, handleMe } from './auth.js';
-import { handleListSeats, handleAdminListSeats, handleAdminSetSeatStatus, handleWebSocket } from './seats.js';
+import { handleListSeats, handleAdminListSeats, handleAdminSetSeatStatus, handleAdminSetRoomLocation, handleWebSocket } from './seats.js';
 import {
   handleCreateReservation,
   handleMyReservation,
@@ -50,6 +50,7 @@ const router = new Router()
   // 관리자
   .get('/api/admin/seats', handleAdminListSeats)
   .post('/api/admin/seats/:id/status', handleAdminSetSeatStatus)
+  .post('/api/admin/rooms/:code/location', handleAdminSetRoomLocation)
   .post('/api/admin/reservations/:id/release', handleAdminReleaseReservation)
   .get('/api/admin/events', handleAdminEvents)
   .post('/api/admin/devices/:room/shutdown', handleAdminDeviceShutdown)

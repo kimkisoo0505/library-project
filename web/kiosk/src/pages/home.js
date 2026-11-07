@@ -88,6 +88,9 @@ export function renderHome(root) {
   };
 
   const roomName = (code) => state.rooms.find((r) => r.code === code)?.name ?? `열람실 ${code}`;
+  // 강의실 위치(호수): 관리자가 입력한 값. 비어 있으면 표시하지 않는다.
+  const roomPlace = (code) => String(state.rooms.find((r) => r.code === code)?.location ?? '').trim();
+  const roomWithPlace = (code, sep = ' · ') => (roomPlace(code) ? `${roomName(code)}${sep}${roomPlace(code)}` : roomName(code));
   const seatsInRoom = () => state.seats.filter((s) => s.room === state.room);
   const mySeat = () => state.seats.find((s) => s.mine);
 
@@ -523,7 +526,7 @@ export function renderHome(root) {
       const left = el('div');
       const btns = el('div', 'hero-btns');
       if (mine.state === 'reserved') {
-        left.append(el('div', 'k', `예약 완료 · ${roomName(mine.room)}`), el('div', 'v', `${mine.label} 좌석`));
+        left.append(el('div', 'k', `예약 완료 · ${roomWithPlace(mine.room, ' ')}`), el('div', 'v', `${mine.label} 좌석`));
         const right = el('div', 'right');
         right.append(el('div', 'k', '착석까지'), liveCountdown(mine.expires_at, 'div', 'countdown', URGENT_MS));
         top.append(left, right);
@@ -589,7 +592,7 @@ export function renderHome(root) {
 
   function renderRoomHead() {
     const room = state.rooms.find((r) => r.code === state.room);
-    roomTitle.textContent = roomName(state.room);
+    roomTitle.textContent = roomPlace(state.room) || roomName(state.room); // 시안: 열람실 탭 아래에 강의실 호수
     roomCount.replaceChildren();
     if (!room) return;
     if (Number(room.available) === 0) {
@@ -808,7 +811,7 @@ export function renderHome(root) {
     title.append(el('b', null, seat.label), el('span', `sh-state state-${seat.mine ? 'mine' : seat.state}`, seat.mine ? '내 좌석' : stateLabel));
     const tags = el('div', 'tags');
     tags.append(el('span', 'tag', '좌석 정보(콘센트·창가 등) · 기능 추가 예정'));
-    const parts = [title, el('div', 'sh-sub', roomName(seat.room)), tags];
+    const parts = [title, el('div', 'sh-sub', roomWithPlace(seat.room)), tags];
     if (seat.state === 'occupied' && seat.usage_ends_at) {
       const left = el('p', 'seat-left');
       left.append('남은 이용 시간 ', liveCountdown(seat.usage_ends_at, 'b', 'inline-countdown', USAGE_URGENT_MS),

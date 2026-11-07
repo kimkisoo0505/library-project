@@ -133,6 +133,12 @@ h2 { font-size: 1.1rem; }
 .room-head .cnt { font-size: 13px; color: var(--sub); }
 .room-head .cnt b { color: var(--av); font-size: 15px; }
 .room-head .cnt b.full { color: var(--bad); }
+/* 관리자: 강의실 위치(호수) 입력 */
+.location-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.location-form label { width: 100%; font-size: 13px; font-weight: 600; color: var(--sub); }
+.location-input { flex: 1; min-width: 180px; max-width: 320px; font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--r-sm); outline: none; }
+.location-input:focus { border-color: var(--kg); }
+.location-form .hint { width: 100%; margin: 0; font-size: 12px; }
 
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
 .filter { font-size: 12.5px; font-weight: 600; padding: 7px 11px; border-radius: 999px; background: var(--bg); color: var(--sub); border: 0; cursor: pointer; }
@@ -141,7 +147,15 @@ h2 { font-size: 1.1rem; }
 .filters .soon { margin-left: 2px; }
 
 /* ---------- 좌석 배치도 ---------- */
-.seat-map { display: grid; grid-template-columns: repeat(var(--columns, 6), minmax(0, 1fr)); gap: 6px; }
+/* 강의실 모양: 앞쪽(출입구 · 칠판/교탁 · 창가) → 3석 | 통로 | 3석 → 뒤쪽 */
+.room-front { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 11px; color: var(--sub); }
+.room-board { flex: 1; height: 22px; border-radius: 7px; background: var(--bg); display: grid; place-items: center; font-weight: 500; }
+.room-door, .room-window { white-space: nowrap; }
+.room-back { font-size: 11px; color: var(--sub); text-align: center; margin-top: 8px; }
+.seat-map {
+  display: grid; gap: 6px;
+  grid-template-columns: repeat(var(--left, 3), minmax(0, 1fr)) 16px repeat(var(--right, 3), minmax(0, 1fr));
+}
 .seat-map-empty { color: var(--sub); grid-column: 1 / -1; font-size: 14px; text-align: center; padding: 24px 0; margin: 0; }
 .seat-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;

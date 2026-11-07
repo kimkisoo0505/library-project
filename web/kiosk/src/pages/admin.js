@@ -111,6 +111,43 @@ export function renderAdmin(root) {
     return b;
   }
 
+  // ----- 강의실 위치(호수) 입력: 학생 화면의 열람실 이름 자리에 표시된다 -----
+  // 입력란은 한 번만 만들어 두어, 실시간 갱신으로 다시 그려져도 입력 중인 글자가 지워지지 않게 한다.
+  const locationInput = el('input', 'location-input');
+  locationInput.type = 'text';
+  locationInput.maxLength = 40;
+  locationInput.placeholder = '예: 00관 000호';
+  locationInput.id = 'room-location';
+  let locationRoom = null;
+  let locationDirty = false;
+  locationInput.addEventListener('input', () => { locationDirty = true; });
+
+  function renderLocationForm() {
+    const room = state.rooms.find((r) => r.code === state.room);
+    if (locationRoom !== state.room || !locationDirty) {
+      locationInput.value = room?.location ?? '';
+      locationRoom = state.room;
+      locationDirty = false;
+    }
+    const form = el('form', 'location-form');
+    const label = el('label', null, `${room?.name ?? state.room} 강의실 위치 (호수)`);
+    label.htmlFor = 'room-location';
+    const save = el('button', 'btn btn-primary', '저장');
+    save.type = 'submit';
+    save.disabled = state.busy;
+    form.append(label, locationInput, save, el('p', 'hint', '학생 화면의 좌석 배치도 위에 표시됩니다. 비워 두고 저장하면 열람실 이름이 표시됩니다.'));
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const code = state.room;
+      const value = locationInput.value;
+      runAction(async () => {
+        await api.adminSetRoomLocation(code, value);
+        locationDirty = false;
+      }, `${room?.name ?? code} 위치를 저장했습니다.`);
+    });
+    return form;
+  }
+
   function renderSeatTable() {
     const table = el('table', 'data-table');
     const head = el('tr');
@@ -255,7 +292,7 @@ export function renderAdmin(root) {
 
     const seatSection = el('section', 'card');
     roomTabs.update(state.rooms, state.room);
-    seatSection.append(el('h2', null, '좌석 관리'), roomTabs.element, renderSeatTable());
+    seatSection.append(el('h2', null, '좌석 관리'), roomTabs.element, renderLocationForm(), renderSeatTable());
     const deviceSection = el('section', 'card');
     deviceSection.append(el('h2', null, '현장 장치'), renderDevices());
     const eventSection = el('section', 'card');

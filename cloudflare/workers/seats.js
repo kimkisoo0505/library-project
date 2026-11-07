@@ -32,7 +32,7 @@ export function parseRoomCode(url) {
 async function querySeats(env) {
   const { results } = await env.DB.prepare(
     `SELECT s.id, s.label, s.seat_no, s.status AS seat_status, s.updated_at,
-            rm.code AS room_code, rm.name AS room_name, rm.sort_order AS room_order,
+            rm.code AS room_code, rm.name AS room_name, rm.sort_order AS room_order, rm.location AS room_location,
             r.id AS reservation_id, r.student_id, r.status AS reservation_status,
             r.reserved_at, r.expires_at, r.checked_in_at, r.usage_hours, r.usage_ends_at
        FROM seats s
@@ -49,7 +49,7 @@ function summarizeRooms(rows) {
   const rooms = new Map();
   for (const row of rows) {
     if (!rooms.has(row.room_code)) {
-      rooms.set(row.room_code, { code: row.room_code, name: row.room_name, total: 0, available: 0 });
+      rooms.set(row.room_code, { code: row.room_code, name: row.room_name, location: row.room_location ?? '', total: 0, available: 0 });
     }
     const room = rooms.get(row.room_code);
     room.total += 1;
@@ -177,6 +177,46 @@ export async function handleAdminSetSeatStatus(ctx) {
   });
   await broadcastSeatChange(ctx.env, seatId, 'seat.status_changed');
   return json({ seat: updated });
+}
+
+export const ROOM_LOCATION_MAX = 40;
+
+/** 열람실 위치(강의실 호수) 입력값 검증. 앞뒤 공백 제거, 빈 문자열 = 지우기 */
+export function parseRoomLocation(value) {
+  if (typeof value !== 'string') throw new HttpError(400, 'invalid_parameter', 'location은 문자열이어야 합니다.');
+  const location = value.trim().replace(/\s+/g, ' ');
+  if (location.length > ROOM_LOCATION_MAX) {
+    throw new HttpError(400, 'invalid_parameter', `위치는 ${ROOM_LOCATION_MAX}자 이하로 입력하세요.`);
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f<>]/.test(location)) {
+    throw new HttpError(400, 'invalid_parameter', '위치에 사용할 수 없는 문자가 있습니다.');
+  }
+  return location;
+}
+
+/** POST /api/admin/rooms/:code/location { "location": "00관 000호" } */
+export async function handleAdminSetRoomLocation(ctx) {
+  const admin = await requireAdmin(ctx);
+  const code = String(ctx.params.code ?? '').toUpperCase();
+  if (!/^[A-Z]$/.test(code)) throw new HttpError(400, 'invalid_parameter', '열람실 코드가 올바르지 않습니다.');
+  const body = await readJson(ctx.request);
+  const location = parseRoomLocation(body.location);
+
+  const updated = await ctx.env.DB.prepare(
+    'UPDATE rooms SET location = ?1 WHERE code = ?2 RETURNING code, name, location',
+  ).bind(location, code).first();
+  if (!updated) throw new HttpError(404, 'room_not_found', '존재하지 않는 열람실입니다.');
+
+  await logEvent(ctx.env, {
+    source: 'admin',
+    eventType: 'room.location_changed',
+    actorType: 'admin',
+    actorId: admin.subjectId,
+    payload: { room: code, location },
+  });
+  await broadcastSeatChange(ctx.env, null, 'room.location_changed'); // 키오스크가 좌석 목록을 다시 받아 위치를 갱신
+  return json({ room: updated });
 }
 
 /**
