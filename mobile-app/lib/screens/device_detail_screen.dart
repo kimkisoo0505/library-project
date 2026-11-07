@@ -467,6 +467,12 @@ class _ConnectionCard extends StatelessWidget {
         );
       case AppConnectionState.disconnecting:
         button = const OutlinedButton(onPressed: null, child: Text('해제 중…'));
+      case AppConnectionState.disconnected when mine && c.waitingReconnect:
+        button = OutlinedButton.icon(
+          onPressed: onDisconnect, // stops automatic reconnection
+          icon: const Icon(Icons.stop_circle_outlined),
+          label: const Text('재연결 중지'),
+        );
       case AppConnectionState.disconnected:
         button = FilledButton.icon(
           onPressed: onConnect,
@@ -483,7 +489,12 @@ class _ConnectionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(child: ConnectionStatus(state: state)),
+                Expanded(
+                  child: ConnectionStatus(
+                    state: state,
+                    reconnectAttempt: mine ? c.reconnectAttempt : 0,
+                  ),
+                ),
                 button,
               ],
             ),

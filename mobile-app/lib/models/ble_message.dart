@@ -46,6 +46,7 @@ class BleMessage {
     this.status,
     this.rtt,
     this.note,
+    this.tag,
   });
 
   final int id;
@@ -64,6 +65,12 @@ class BleMessage {
 
   /// Extra human-readable detail (error text, matched command, ...).
   String? note;
+
+  /// Internal purpose of a command not shown in the log
+  /// ("keepalive", "soak"); null for commands the user sent.
+  final String? tag;
+
+  bool get quiet => tag != null;
 }
 
 /// Kinds of response the Pi sends (docs/BLE_GATT_SPEC.md v0).

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../models/ble_connection.dart' show maxReconnectAttempts;
 import '../models/ble_message.dart';
 import '../services/ble_service.dart';
 import '../services/communication_service.dart';
@@ -19,12 +22,24 @@ class CommunicationScreen extends StatefulWidget {
 class _CommunicationScreenState extends State<CommunicationScreen> {
   final _echo = TextEditingController(text: 'Hello');
   final _raw = TextEditingController(text: 'HELLO,1');
+  late final Timer _ticker = Timer.periodic(
+    const Duration(seconds: 1),
+    (_) => mounted ? setState(() {}) : null,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker; // start the 1 s refresh for durations / countdowns
+  }
+
   String? _inputError;
 
   CommunicationService get _comm => widget.comm;
 
   @override
   void dispose() {
+    _ticker.cancel();
     _echo.dispose();
     _raw.dispose();
     super.dispose();
@@ -73,6 +88,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                       Expanded(
                         child: ConnectionStatus(
                           state: c.state,
+                          reconnectAttempt: c.reconnectAttempt,
                           deviceName: c.isConnected
                               ? (c.deviceName ?? c.deviceId)
                               : null,
@@ -179,6 +195,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                       style: TextStyle(color: theme.colorScheme.error),
                     ),
                   ),
+                _StabilityPanel(ble: widget.ble, comm: _comm),
                 _Summary(log: _comm.log),
                 const Divider(height: 1),
                 Expanded(
@@ -298,6 +315,133 @@ class _LogRow extends StatelessWidget {
                     : (m.status == SendStatus.answered ? Colors.green : muted),
               ),
             ),
+    );
+  }
+}
+
+String _mmss(Duration d) {
+  final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
+  final mm = m.toString().padLeft(2, '0'), ss = s.toString().padLeft(2, '0');
+  return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+}
+
+/// Step 7: automatic reconnection, keepalive and long-running test.
+class _StabilityPanel extends StatelessWidget {
+  const _StabilityPanel({required this.ble, required this.comm});
+
+  final BleService ble;
+  final CommunicationService comm;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall;
+    final c = ble.connection;
+    final now = DateTime.now();
+    final st = comm.soak;
+    final last = comm.lastKeepaliveOk;
+
+    return ExpansionTile(
+      dense: true,
+      initiallyExpanded: st?.running ?? false,
+      title: const Text('안정성 (자동 재연결 · 연결 확인 · 연속 시험)'),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('끊기면 자동 재연결'),
+          subtitle: Text(
+            '2·4·8·16·30초 간격으로 최대 $maxReconnectAttempts회 (직접 해제했을 때는 안 함)',
+            style: small,
+          ),
+          value: ble.autoReconnect,
+          onChanged: (v) => ble.autoReconnect = v,
+        ),
+        Text(
+          '이번 실행: 연결 ${ble.connectCount}회 · 끊김 ${ble.lossCount}회 · '
+          '자동 재연결 성공 ${ble.reconnectSuccessCount}회',
+          style: small,
+        ),
+        Text(
+          c.isConnected && c.connectedAt != null
+              ? '현재 연결 유지 ${_mmss(now.difference(c.connectedAt!))}'
+              : '현재 연결 없음',
+          style: small,
+        ),
+        Text(
+          '연결 확인 (${CommunicationService.keepaliveInterval.inSeconds}초마다 PING): '
+          '성공 ${comm.keepaliveOk} · 실패 ${comm.keepaliveMissed}'
+          '${last == null ? '' : ' · 마지막 성공 ${now.difference(last).inSeconds}초 전'}',
+          style: small,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Text('연속 시험 (1초마다 PING)'),
+            const Spacer(),
+            if (st?.running ?? false)
+              OutlinedButton(
+                onPressed: comm.stopSoakTest,
+                child: const Text('중지'),
+              )
+            else
+              for (final m in const [1, 5, 30])
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: OutlinedButton(
+                    onPressed: comm.ready
+                        ? () => comm.runSoakTest(Duration(minutes: m))
+                        : null,
+                    child: Text('$m분'),
+                  ),
+                ),
+          ],
+        ),
+        if (st != null) _SoakView(st: st, now: now),
+      ],
+    );
+  }
+}
+
+class _SoakView extends StatelessWidget {
+  const _SoakView({required this.st, required this.now});
+
+  final SoakStats st;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final small = Theme.of(context).textTheme.bodySmall;
+    final elapsed = now.difference(st.startedAt);
+    final shown = elapsed > st.duration ? st.duration : elapsed;
+    final rate = st.successRate == null
+        ? '-'
+        : '${(st.successRate! * 100).toStringAsFixed(1)}%';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (st.running)
+          LinearProgressIndicator(
+            value: shown.inMilliseconds / st.duration.inMilliseconds,
+          ),
+        Text(
+          '${st.running ? '진행' : (st.cancelled ? '중지됨' : '완료')} '
+          '${_mmss(shown)} / ${_mmss(st.duration)} · 보냄 ${st.sent} · 응답 ${st.answered} ($rate)',
+          style: small,
+        ),
+        Text(
+          '시간 초과 ${st.timedOut} · 거부 ${st.rejected} · 전송 실패 ${st.writeFailed} · '
+          '끊김 ${st.connectionLost} · 연결 없어 건너뜀 ${st.skipped}',
+          style: small,
+        ),
+        if (st.rttMs.isNotEmpty)
+          Text(
+            '왕복 시간 중앙값 ${st.percentile(0.5)}ms · 95% ${st.percentile(0.95)}ms · 최대 ${st.maxRtt}ms',
+            style: small,
+          ),
+      ],
     );
   }
 }

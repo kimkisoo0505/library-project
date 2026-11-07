@@ -25,7 +25,14 @@ enum AdapterState {
 /// Holds the app's single BLE connection so it survives screen changes;
 /// listeners are notified on every [connection] change.
 class BleService extends ChangeNotifier {
-  BleService({FlutterReactiveBle? ble}) : _injected = ble;
+  BleService({
+    FlutterReactiveBle? ble,
+    Duration Function(int attempt) reconnectDelayOf = reconnectDelay,
+  }) : _injected = ble,
+       _delayOf = reconnectDelayOf;
+
+  /// Wait before each automatic reconnect try (tests shorten it).
+  final Duration Function(int attempt) _delayOf;
 
   static const connectTimeout = Duration(seconds: 10);
 
@@ -79,6 +86,26 @@ class BleService extends ChangeNotifier {
   StreamSubscription<ConnectionStateUpdate>? _connSub;
   bool _userDisconnect = false;
 
+  // Step 7: automatic reconnection after an unexpected loss.
+  BleDevice? _lastDevice;
+  Timer? _reconnectTimer;
+  int _attempt = 0;
+
+  /// Reconnect automatically when the link drops unexpectedly
+  /// (never after the user's own disconnect).
+  bool get autoReconnect => _autoReconnect;
+  bool _autoReconnect = true;
+  set autoReconnect(bool v) {
+    _autoReconnect = v;
+    if (!v) _cancelReconnect();
+    notifyListeners();
+  }
+
+  /// Counters for this app run (shown on the communication screen).
+  int connectCount = 0;
+  int lossCount = 0;
+  int reconnectSuccessCount = 0;
+
   /// Current connection snapshot (one device at a time).
   BleConnection get connection => _connection;
 
@@ -89,13 +116,21 @@ class BleService extends ChangeNotifier {
 
   /// Connects to [device]. Any existing connection is closed first.
   /// Progress, success and failure are reported through [connection].
-  Future<void> connect(BleDevice device) async {
-    if (_connSub != null) await disconnect();
+  Future<void> connect(BleDevice device) => _connect(device, retry: false);
+
+  Future<void> _connect(BleDevice device, {required bool retry}) async {
+    if (!retry) {
+      _cancelReconnect();
+      _attempt = 0;
+    }
+    if (_connSub != null) await _closeQuietly();
     _userDisconnect = false;
+    _lastDevice = device;
     _set(
       ConnectionTransitions.connecting(
         device.id,
         device.hasName ? device.name : null,
+        attempt: _attempt,
       ),
     );
 
@@ -111,8 +146,27 @@ class BleService extends ChangeNotifier {
         );
   }
 
+  /// Closes the current link without reporting it as the user's choice.
+  Future<void> _closeQuietly() async {
+    final sub = _connSub;
+    _connSub = null;
+    _userDisconnect = true;
+    await sub?.cancel();
+  }
+
   /// User-requested disconnect. Cancelling the subscription closes the link.
+  /// Also stops a pending automatic reconnection.
   Future<void> disconnect() async {
+    if (_reconnectTimer != null || _connection.waitingReconnect) {
+      _cancelReconnect();
+      if (_connSub == null) {
+        _set(
+          ConnectionTransitions.reconnectCancelled(_connection, DateTime.now()),
+        );
+        return;
+      }
+    }
+    _cancelReconnect();
     final sub = _connSub;
     if (sub == null) return;
     _userDisconnect = true;
@@ -128,12 +182,35 @@ class BleService extends ChangeNotifier {
     );
   }
 
+  /// The link looks alive but the Pi stopped answering (keepalive misses):
+  /// drop it and let automatic reconnection take over.
+  Future<void> forceReconnect(String why) async {
+    final id = _connection.deviceId;
+    if (id == null || !_connection.isConnected) return;
+    final sub = _connSub;
+    _connSub = null;
+    await sub?.cancel();
+    lossCount++;
+    _set(
+      ConnectionTransitions.ended(
+        _connection,
+        now: DateTime.now(),
+        userRequested: false,
+        error: why,
+      ),
+    );
+    _scheduleReconnect();
+  }
+
   void _onUpdate(String id, ConnectionStateUpdate u) {
     if (!_connection.isFor(id) || _connSub == null) return; // stale stream
     switch (u.connectionState) {
       case DeviceConnectionState.connecting:
         break; // already shown as connecting
       case DeviceConnectionState.connected:
+        connectCount++;
+        if (_attempt > 0) reconnectSuccessCount++;
+        _attempt = 0;
         _set(ConnectionTransitions.connected(_connection, DateTime.now()));
         unawaited(_inspect(id));
       case DeviceConnectionState.disconnecting:
@@ -151,15 +228,50 @@ class BleService extends ChangeNotifier {
     _connSub = null;
     unawaited(sub?.cancel());
     if (_userDisconnect) return; // disconnect() reports this itself
+    final ended = ConnectionTransitions.ended(
+      _connection,
+      now: DateTime.now(),
+      userRequested: false,
+      timedOut: timedOut,
+      error: error,
+    );
+    if (ended.reason == DisconnectReason.lost) lossCount++;
+    _set(ended);
+    // Reconnect after a loss, and keep trying if a retry itself failed.
+    if (ended.reason == DisconnectReason.lost || _attempt > 0) {
+      _scheduleReconnect();
+    }
+  }
+
+  void _scheduleReconnect() {
+    final device = _lastDevice;
+    if (!autoReconnect || device == null) return;
+    _reconnectTimer?.cancel();
+    _attempt++;
+    if (_attempt > maxReconnectAttempts) {
+      _attempt = 0;
+      _reconnectTimer = null;
+      _set(ConnectionTransitions.reconnectGaveUp(_connection));
+      return;
+    }
+    final delay = _delayOf(_attempt);
     _set(
-      ConnectionTransitions.ended(
+      ConnectionTransitions.waitingReconnect(
         _connection,
-        now: DateTime.now(),
-        userRequested: false,
-        timedOut: timedOut,
-        error: error,
+        attempt: _attempt,
+        at: DateTime.now().add(delay),
       ),
     );
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      unawaited(_connect(device, retry: true));
+    });
+  }
+
+  void _cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _attempt = 0;
   }
 
   /// After connecting: check the GATT layout, then read Status once.
@@ -276,6 +388,7 @@ class BleService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _reconnectTimer?.cancel();
     unawaited(_connSub?.cancel());
     super.dispose();
   }

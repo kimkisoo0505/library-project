@@ -27,6 +27,10 @@ class FakePiBle extends BleService {
   final written = <String>[];
   bool failWrites = false;
   bool silent = false; // do not answer
+  final forced = <String>[];
+
+  @override
+  Future<void> forceReconnect(String why) async => forced.add(why);
 
   @override
   BleConnection get connection => _c;
@@ -129,7 +133,7 @@ void main() {
 
     setUp(() {
       ble = FakePiBle();
-      comm = CommunicationService(ble);
+      comm = CommunicationService(ble, keepalive: null);
     });
 
     tearDown(() => comm.dispose());
@@ -209,6 +213,65 @@ void main() {
       expect(comm.ready, isFalse);
       expect(comm.piConnected, isFalse);
     });
+  });
+
+  testWidgets('keepalive: 2 silent checks in a row -> forceReconnect', (
+    tester,
+  ) async {
+    final ble = FakePiBle();
+    final comm = CommunicationService(
+      ble,
+      keepalive: const Duration(seconds: 15),
+    );
+    ble.connectPi();
+    ble.silent = true;
+
+    await tester.pump(const Duration(seconds: 15)); // 1st check sent
+    expect(ble.written, ['PING,1']);
+    expect(
+      comm.log.where((m) => m.text == 'PING,1'),
+      isEmpty,
+      reason: 'keepalive pings stay out of the log',
+    );
+    await tester.pump(const Duration(seconds: 3)); // timed out
+    expect(comm.keepaliveMissed, 1);
+    expect(ble.forced, isEmpty);
+
+    await tester.pump(const Duration(seconds: 12)); // 2nd check
+    await tester.pump(const Duration(seconds: 3));
+    expect(comm.keepaliveMissed, 2);
+    expect(ble.forced, ['Pi 응답 없음']);
+
+    ble.silent = false; // answers again -> misses reset
+    await tester.pump(const Duration(seconds: 12));
+    await tester.pump();
+    expect(comm.keepaliveOk, 1);
+    comm.dispose();
+  });
+
+  testWidgets('soak test counts answers and skips while disconnected', (
+    tester,
+  ) async {
+    final ble = FakePiBle();
+    final comm = CommunicationService(ble, keepalive: null);
+    ble.connectPi();
+    final run = comm.runSoakTest(const Duration(seconds: 5));
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    // Ticks at 0, 1, 2, 3 s were sent; the tick at 4 s finds no connection.
+    ble.dropLink();
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    final st = await run;
+    expect(st.running, isFalse);
+    expect(st.sent, 4);
+    expect(st.answered, 4);
+    expect(st.skipped, 1);
+    expect(st.successRate, 1.0);
+    expect(comm.log.last.text, contains('연속 시험 완료'));
+    comm.dispose();
   });
 
   test('PingRunResult stats', () {

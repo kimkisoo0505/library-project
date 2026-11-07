@@ -51,6 +51,7 @@ class HomeScreen extends StatelessWidget {
                             Expanded(
                               child: ConnectionStatus(
                                 state: c.state,
+                                reconnectAttempt: c.reconnectAttempt,
                                 deviceName:
                                     c.state == AppConnectionState.disconnected
                                     ? null
@@ -61,6 +62,11 @@ class HomeScreen extends StatelessWidget {
                               TextButton(
                                 onPressed: ble.disconnect,
                                 child: const Text('연결 해제'),
+                              ),
+                            if (c.waitingReconnect)
+                              TextButton(
+                                onPressed: ble.disconnect,
+                                child: const Text('재연결 중지'),
                               ),
                           ],
                         ),

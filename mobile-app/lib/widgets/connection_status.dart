@@ -5,10 +5,18 @@ import '../models/ble_connection.dart';
 export '../models/ble_connection.dart' show AppConnectionState;
 
 class ConnectionStatus extends StatelessWidget {
-  const ConnectionStatus({super.key, required this.state, this.deviceName});
+  const ConnectionStatus({
+    super.key,
+    required this.state,
+    this.deviceName,
+    this.reconnectAttempt = 0,
+  });
 
   final AppConnectionState state;
   final String? deviceName;
+
+  /// > 0 while an automatic reconnection try is running.
+  final int reconnectAttempt;
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +29,9 @@ class ConnectionStatus extends StatelessWidget {
       AppConnectionState.connecting => (
         Icons.bluetooth_searching,
         Colors.orange,
-        '연결 중…',
+        reconnectAttempt > 0
+            ? '재연결 중 ($reconnectAttempt/$maxReconnectAttempts)…'
+            : '연결 중…',
       ),
       AppConnectionState.disconnecting => (
         Icons.bluetooth_searching,
@@ -69,7 +79,17 @@ String? lastEndText(BleConnection c) {
     DisconnectReason.failed => '연결하지 못했습니다',
   };
   final err = c.error == null || c.error!.isEmpty ? '' : ' · ${c.error}';
-  return '${_hms(at)} $what$err';
+  final String retry;
+  if (c.waitingReconnect) {
+    final s = c.reconnectAt!.difference(DateTime.now()).inSeconds + 1;
+    retry =
+        ' · 자동 재연결 ${c.reconnectAttempt}/$maxReconnectAttempts (${s < 1 ? 1 : s}초 후)';
+  } else if (c.reconnectGaveUp) {
+    retry = ' · 자동 재연결 중지 ($maxReconnectAttempts회 실패)';
+  } else {
+    retry = '';
+  }
+  return '${_hms(at)} $what$err$retry';
 }
 
 /// True when the last ending was not the user's choice (shown as a warning).

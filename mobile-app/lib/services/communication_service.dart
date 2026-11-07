@@ -32,6 +32,35 @@ class PingRunResult {
         );
 }
 
+/// Live results of a long-running PING test (step 7).
+class SoakStats {
+  SoakStats(this.duration, this.startedAt);
+
+  final Duration duration;
+  final DateTime startedAt;
+  bool running = true;
+  bool cancelled = false;
+  int sent = 0, answered = 0, rejected = 0, timedOut = 0, writeFailed = 0;
+  int connectionLost = 0;
+
+  /// Ticks skipped because the Pi was not connected (e.g. reconnecting).
+  int skipped = 0;
+  final List<int> rttMs = [];
+
+  int get failed => rejected + timedOut + writeFailed + connectionLost;
+  double? get successRate => sent == 0 ? null : answered / sent;
+
+  int? percentile(double p) {
+    if (rttMs.isEmpty) return null;
+    final sorted = [...rttMs]..sort();
+    final i = ((sorted.length - 1) * p).round();
+    return sorted[i];
+  }
+
+  int? get maxRtt =>
+      rttMs.isEmpty ? null : rttMs.reduce((a, b) => a > b ? a : b);
+}
+
 /// Sends commands to the library Pi and receives its responses.
 ///
 /// - Subscribes to the Response characteristic automatically once the
@@ -42,7 +71,9 @@ class PingRunResult {
 ///   fails everything still waiting.
 /// - Keeps the last [maxLog] log entries (in memory only).
 class CommunicationService extends ChangeNotifier {
-  CommunicationService(this._ble) {
+  /// [keepalive] null disables the periodic connection check (tests).
+  CommunicationService(this._ble, {Duration? keepalive = keepaliveInterval})
+    : _keepaliveEvery = keepalive {
     _ble.addListener(_onConnectionChanged);
     _onConnectionChanged();
   }
@@ -50,7 +81,13 @@ class CommunicationService extends ChangeNotifier {
   static const responseTimeout = Duration(seconds: 3);
   static const maxLog = 300;
 
+  /// Step 7: a quiet PING this often while idle; [keepaliveMissLimit]
+  /// misses in a row mean the Pi stopped answering -> reconnect.
+  static const keepaliveInterval = Duration(seconds: 15);
+  static const keepaliveMissLimit = 2;
+
   final BleService _ble;
+  final Duration? _keepaliveEvery;
   final _seq = SeqCounter();
   final List<BleMessage> _log = [];
   final Map<int, BleMessage> _waiting = {};
@@ -59,6 +96,20 @@ class CommunicationService extends ChangeNotifier {
   String? _subscribedTo;
   int _nextId = 1;
   bool _pingRunActive = false;
+
+  Timer? _keepalive;
+  int _keepaliveMisses = 0;
+  int keepaliveOk = 0;
+  int keepaliveMissed = 0;
+  DateTime? lastKeepaliveOk;
+  bool _hadLoss = false;
+  int _loggedAttempt = 0;
+  bool _loggedGaveUp = false;
+
+  SoakStats? _soak;
+
+  /// Current or last long-running test, if any.
+  SoakStats? get soak => _soak;
 
   /// Newest last.
   List<BleMessage> get log => List.unmodifiable(_log);
@@ -82,6 +133,22 @@ class CommunicationService extends ChangeNotifier {
     } else if (!c.isConnected && _subscribedTo != null) {
       _teardown(c);
     }
+    // Reconnection progress in the log (once per attempt).
+    if (c.waitingReconnect && c.reconnectAttempt != _loggedAttempt) {
+      _loggedAttempt = c.reconnectAttempt;
+      final wait = c.reconnectAt!.difference(DateTime.now()).inSeconds + 1;
+      _system(
+        '자동 재연결 ${c.reconnectAttempt}/$maxReconnectAttempts — 약 $wait초 후 시도',
+      );
+    }
+    if (c.reconnectGaveUp && !_loggedGaveUp) {
+      _loggedGaveUp = true;
+      _system('자동 재연결 중지 ($maxReconnectAttempts회 실패) — 연결 버튼으로 다시 시도하세요');
+    }
+    if (c.isConnected) {
+      _loggedAttempt = 0;
+      _loggedGaveUp = false;
+    }
   }
 
   void _subscribe(String deviceId) {
@@ -95,30 +162,50 @@ class CommunicationService extends ChangeNotifier {
         notifyListeners();
       },
     );
-    _system('Pi 응답 알림 구독 시작');
+    _system(_hadLoss ? '재연결 성공 — Pi 응답 알림 다시 구독' : 'Pi 응답 알림 구독 시작');
+    _hadLoss = false;
+    _keepaliveMisses = 0;
+    _keepalive?.cancel();
+    final every = _keepaliveEvery;
+    _keepalive = every == null
+        ? null
+        : Timer.periodic(every, (_) => _keepaliveTick());
+  }
+
+  void _keepaliveTick() {
+    if (!ready || (_soak?.running ?? false) || _waiting.isNotEmpty) return;
+    unawaited(_send((s) => BleProtocol.ping(s), tag: 'keepalive'));
   }
 
   void _teardown(BleConnection c) {
     _sub?.cancel();
     _sub = null;
     _subscribedTo = null;
-    for (final m in _waiting.values) {
+    _keepalive?.cancel();
+    _keepalive = null;
+    final lost = _waiting.values.toList();
+    _waiting.clear();
+    for (final m in lost) {
       m.status = SendStatus.connectionLost;
       m.note = '응답 전에 연결이 끊어짐';
+      _finished(m);
     }
-    _waiting.clear();
     for (final t in _timers.values) {
       t.cancel();
     }
     _timers.clear();
-    final why = c.reason == DisconnectReason.user ? '연결 해제' : '연결 끊김';
-    _system('$why — 송수신 중지');
+    final user = c.reason == DisconnectReason.user;
+    _hadLoss = !user;
+    final detail = c.error == null || c.error!.isEmpty ? '' : ' (${c.error})';
+    _system('${user ? '연결 해제' : '연결 끊김$detail'} — 송수신 중지');
   }
 
   @override
   void dispose() {
     _ble.removeListener(_onConnectionChanged);
     _sub?.cancel();
+    _keepalive?.cancel();
+    _soak?.cancelled = true;
     for (final t in _timers.values) {
       t.cancel();
     }
@@ -187,12 +274,103 @@ class CommunicationService extends ChangeNotifier {
     return r;
   }
 
+  /// Runs a PING every [interval] for [duration], counting results without
+  /// filling the log. Keeps going through disconnects (counted as skipped)
+  /// so automatic reconnection is part of the test.
+  Future<SoakStats> runSoakTest(
+    Duration duration, {
+    Duration interval = const Duration(seconds: 1),
+  }) async {
+    final st = SoakStats(duration, DateTime.now());
+    _soak = st;
+    _system(
+      '연속 시험 시작 (${duration.inMinutes}분, ${interval.inSeconds}초 간격 PING)',
+    );
+    final ticks = duration.inMilliseconds ~/ interval.inMilliseconds;
+    for (var i = 0; i < ticks && !st.cancelled; i++) {
+      if (ready) {
+        unawaited(_send((s) => BleProtocol.ping(s), tag: 'soak'));
+      } else {
+        st.skipped++;
+        notifyListeners();
+      }
+      await Future<void>.delayed(interval);
+    }
+    // Let the last pings finish (each one times out by itself).
+    for (
+      var i = 0;
+      i < 70 && _waiting.values.any((m) => m.tag == 'soak');
+      i++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    st.running = false;
+    final rate = st.successRate == null
+        ? '-'
+        : '${(st.successRate! * 100).toStringAsFixed(1)}%';
+    final rtt = st.rttMs.isEmpty
+        ? ''
+        : ', 왕복 중앙값 ${st.percentile(0.5)}ms / 95% ${st.percentile(0.95)}ms / 최대 ${st.maxRtt}ms';
+    _system(
+      '연속 시험 ${st.cancelled ? '중지' : '완료'}: 보냄 ${st.sent}, 응답 ${st.answered} ($rate), '
+      '실패 ${st.failed}, 연결 없어 건너뜀 ${st.skipped}$rtt',
+    );
+    return st;
+  }
+
+  void stopSoakTest() {
+    _soak?.cancelled = true;
+    notifyListeners();
+  }
+
+  /// Bookkeeping when a command reaches a final status.
+  void _finished(BleMessage m) {
+    switch (m.tag) {
+      case 'keepalive':
+        if (m.status == SendStatus.answered) {
+          _keepaliveMisses = 0;
+          keepaliveOk++;
+          lastKeepaliveOk = DateTime.now();
+        } else if (m.status == SendStatus.timedOut ||
+            m.status == SendStatus.rejected) {
+          _keepaliveMisses++;
+          keepaliveMissed++;
+          if (_keepaliveMisses >= keepaliveMissLimit) {
+            _keepaliveMisses = 0;
+            _system(
+              'Pi 응답 없음 (연결 확인 $keepaliveMissLimit회 연속 실패) — 연결을 다시 맺습니다',
+            );
+            unawaited(_ble.forceReconnect('Pi 응답 없음'));
+          }
+        }
+      case 'soak':
+        final st = _soak;
+        if (st == null) return;
+        switch (m.status) {
+          case SendStatus.answered:
+            st.answered++;
+            if (m.rtt != null) st.rttMs.add(m.rtt!.inMilliseconds);
+          case SendStatus.rejected:
+            st.rejected++;
+          case SendStatus.timedOut:
+            st.timedOut++;
+          case SendStatus.writeFailed:
+            st.writeFailed++;
+          case SendStatus.connectionLost:
+            st.connectionLost++;
+          case SendStatus.waiting || null:
+            break;
+        }
+    }
+  }
+
   Future<BleMessage?> _send(
     String Function(int seq) build, {
     bool usesSeq = true,
+    String? tag,
   }) async {
     if (!ready) {
-      _system('전송 불가: Pi와 연결되어 있지 않습니다');
+      if (tag == null) _system('전송 불가: Pi와 연결되어 있지 않습니다');
       return null;
     }
     final seq = usesSeq ? _seq.next() : null;
@@ -205,8 +383,14 @@ class CommunicationService extends ChangeNotifier {
       at: DateTime.now(),
       seq: mSeq,
       status: SendStatus.waiting,
+      tag: tag,
     );
-    _add(m);
+    if (tag == 'soak') _soak?.sent++;
+    if (m.quiet) {
+      notifyListeners();
+    } else {
+      _add(m);
+    }
 
     // Only one command per sequence number may wait for an answer.
     if (mSeq != null) {
@@ -215,6 +399,7 @@ class CommunicationService extends ChangeNotifier {
         old.status = SendStatus.timedOut;
         old.note = '같은 순번의 새 명령으로 대체됨';
         _timers.remove(mSeq)?.cancel();
+        _finished(old);
       }
     }
 
@@ -223,6 +408,7 @@ class CommunicationService extends ChangeNotifier {
     } catch (e) {
       m.status = SendStatus.writeFailed;
       m.note = '전송 실패: $e';
+      _finished(m);
       notifyListeners();
       return m;
     }
@@ -246,6 +432,7 @@ class CommunicationService extends ChangeNotifier {
         _waiting.remove(key);
         m.status = SendStatus.timedOut;
         m.note = '${responseTimeout.inSeconds}초 안에 응답 없음';
+        _finished(m);
         notifyListeners();
       }
       _timers.remove(key);
@@ -276,6 +463,11 @@ class CommunicationService extends ChangeNotifier {
           : SendStatus.answered;
       sent.note = r.kind == ResponseKind.error ? 'Pi가 거부: ${r.detail}' : null;
       rx.note = '← ${sent.text} · ${sent.rtt!.inMilliseconds}ms';
+      _finished(sent);
+      if (sent.quiet) {
+        notifyListeners(); // keepalive / soak replies stay out of the log
+        return;
+      }
     } else {
       rx.note = '대응하는 명령 없음';
     }

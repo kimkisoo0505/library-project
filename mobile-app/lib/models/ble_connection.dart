@@ -94,6 +94,9 @@ class BleConnection {
     this.status,
     this.statusReadAt,
     this.statusError,
+    this.reconnectAttempt = 0,
+    this.reconnectAt,
+    this.reconnectGaveUp = false,
   });
 
   final AppConnectionState state;
@@ -114,6 +117,16 @@ class BleConnection {
   final DateTime? statusReadAt;
   final String? statusError;
 
+  /// Automatic reconnection (step 7): attempt number of the current or
+  /// pending try (0 = not reconnecting), when the next try starts, and
+  /// whether it stopped after [maxReconnectAttempts].
+  final int reconnectAttempt;
+  final DateTime? reconnectAt;
+  final bool reconnectGaveUp;
+
+  bool get waitingReconnect =>
+      state == AppConnectionState.disconnected && reconnectAt != null;
+
   bool get isConnected => state == AppConnectionState.connected;
 
   bool isFor(String id) => deviceId == id;
@@ -122,11 +135,35 @@ class BleConnection {
 /// Pure transition rules for [BleConnection], kept separate from the BLE
 /// library so they can be unit-tested.
 class ConnectionTransitions {
-  static BleConnection connecting(String id, String? name) => BleConnection(
-    state: AppConnectionState.connecting,
-    deviceId: id,
-    deviceName: name,
-  );
+  static BleConnection connecting(String id, String? name, {int attempt = 0}) =>
+      BleConnection(
+        state: AppConnectionState.connecting,
+        deviceId: id,
+        deviceName: name,
+        reconnectAttempt: attempt,
+      );
+
+  /// Lost link, next automatic try scheduled at [at].
+  static BleConnection waitingReconnect(
+    BleConnection c, {
+    required int attempt,
+    required DateTime at,
+  }) => _copy(c, reconnectAttempt: attempt, reconnectAt: at);
+
+  /// Automatic reconnection stopped after too many failures.
+  static BleConnection reconnectGaveUp(BleConnection c) =>
+      _copy(c, clearReconnectAt: true, gaveUp: true);
+
+  /// The user stopped a pending automatic reconnection.
+  static BleConnection reconnectCancelled(BleConnection c, DateTime now) =>
+      BleConnection(
+        state: AppConnectionState.disconnected,
+        deviceId: c.deviceId,
+        deviceName: c.deviceName,
+        connectedAt: c.connectedAt,
+        endedAt: now,
+        reason: DisconnectReason.user,
+      );
 
   static BleConnection connected(BleConnection c, DateTime now) =>
       BleConnection(
@@ -183,6 +220,7 @@ class ConnectionTransitions {
       endedAt: now,
       reason: reason,
       error: userRequested ? null : error,
+      reconnectAttempt: c.reconnectAttempt,
     );
   }
 
@@ -194,6 +232,10 @@ class ConnectionTransitions {
     String? statusError,
     DateTime? statusReadAt,
     bool keepStatus = true,
+    int? reconnectAttempt,
+    DateTime? reconnectAt,
+    bool clearReconnectAt = false,
+    bool? gaveUp,
   }) => BleConnection(
     state: state ?? c.state,
     deviceId: c.deviceId,
@@ -206,7 +248,20 @@ class ConnectionTransitions {
     status: keepStatus ? c.status : status,
     statusReadAt: keepStatus ? c.statusReadAt : statusReadAt,
     statusError: keepStatus ? c.statusError : statusError,
+    reconnectAttempt: reconnectAttempt ?? c.reconnectAttempt,
+    reconnectAt: clearReconnectAt ? null : (reconnectAt ?? c.reconnectAt),
+    reconnectGaveUp: gaveUp ?? c.reconnectGaveUp,
   );
+}
+
+/// Automatic reconnection gives up after this many tries in a row.
+const int maxReconnectAttempts = 10;
+
+/// Wait before reconnect try [attempt] (1-based): 2, 4, 8, 16, then 30 s.
+/// About 3.5 minutes in total for 10 tries.
+Duration reconnectDelay(int attempt) {
+  final seconds = attempt >= 5 ? 30 : 1 << attempt;
+  return Duration(seconds: seconds);
 }
 
 /// Parses the Status value `OK,<uptime_s>` into seconds; null if malformed.
