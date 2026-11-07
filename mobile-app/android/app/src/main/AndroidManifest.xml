@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- The app shows the library kiosk web page (WebView) and talks to the API. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- BLE is required: the app is useless without it. -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -20,7 +23,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <application
-        android:label="도서관 BLE"
+        android:label="도서관 좌석"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

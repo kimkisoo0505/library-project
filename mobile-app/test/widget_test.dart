@@ -25,7 +25,7 @@ void main() {
   testWidgets('home screen shows disconnected state and scan button', (
     tester,
   ) async {
-    await tester.pumpWidget(LibraryBleApp());
+    await tester.pumpWidget(LibraryBleApp(webHome: false));
 
     expect(find.text('연결 안 됨'), findsOneWidget);
     expect(find.text(BleConstants.deviceName), findsOneWidget);

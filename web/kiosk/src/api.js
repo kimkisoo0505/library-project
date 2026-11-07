@@ -1,18 +1,26 @@
 /**
  * Workers REST API 클라이언트.
  * - 학생/관리자 세션 토큰을 분리 보관 (sessionStorage, 실패 시 메모리)
+ *   앱 모드(개인 휴대폰)에서는 학생 세션만 localStorage 에 두어 앱을 다시 켜도 로그인이 유지된다.
  * - 응답 성공 전에는 어떤 상태 변경도 성공으로 간주하지 않는다.
  */
+import { IN_APP } from './app-bridge.js';
+
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/+$/, '');
 
 const TOKEN_KEYS = { student: 'library.session.student', admin: 'library.session.admin' };
 const memoryStore = new Map();
 
+/** 공용 키오스크는 sessionStorage, 개인 휴대폰 앱의 학생 세션은 localStorage */
+function storeFor(type) {
+  return IN_APP && type === 'student' ? localStorage : sessionStorage;
+}
+
 export const session = {
   get(type) {
     const key = TOKEN_KEYS[type];
     try {
-      return sessionStorage.getItem(key) ?? memoryStore.get(key) ?? null;
+      return storeFor(type).getItem(key) ?? memoryStore.get(key) ?? null;
     } catch {
       return memoryStore.get(key) ?? null;
     }
@@ -20,12 +28,12 @@ export const session = {
   set(type, token) {
     const key = TOKEN_KEYS[type];
     memoryStore.set(key, token);
-    try { sessionStorage.setItem(key, token); } catch { /* 메모리만 사용 */ }
+    try { storeFor(type).setItem(key, token); } catch { /* 메모리만 사용 */ }
   },
   clear(type) {
     const key = TOKEN_KEYS[type];
     memoryStore.delete(key);
-    try { sessionStorage.removeItem(key); } catch { /* 무시 */ }
+    try { storeFor(type).removeItem(key); } catch { /* 무시 */ }
   },
 };
 

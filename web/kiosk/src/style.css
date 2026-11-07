@@ -392,3 +392,10 @@ h2 { font-size: 1.1rem; }
 .inline-countdown { font-variant-numeric: tabular-nums; }
 .inline-countdown.is-urgent { color: var(--danger, #d93025); }
 .my-left, .seat-left { margin: 6px 0 0; font-size: 14px; }
+
+/* 앱 모드 재실 확인 안내 */
+.hero .chip-glass.presence-ok, .hero .chip-glass.presence-weak, .hero .chip-glass.presence-off {
+  white-space: normal; line-height: 1.4; max-width: 100%;
+}
+.hero .chip-glass.presence-ok { background: rgba(120, 220, 150, 0.28); }
+.hero .chip-glass.presence-weak, .hero .chip-glass.presence-off { background: rgba(255, 180, 120, 0.28); }

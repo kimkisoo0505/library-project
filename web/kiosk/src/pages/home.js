@@ -7,6 +7,10 @@ import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
 import { TEST_STUDENTS } from '../test-accounts.js';
 import { createCentralLibraryPanel, congestionLevel, createLevelPill } from '../components/central-library.js';
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from '../components/system-status.js';
+import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from '../app-bridge.js';
+
+/** 앱 모드: 재실 확인을 서버에 보내는 최소 간격 (서버는 남은 시간을 2시간으로 유지) */
+const PRESENCE_REPORT_MS = 60_000;
 
 const SYSTEM_STATUS_POLL_MS = 15_000;
 
@@ -397,6 +401,63 @@ export function renderHome(root) {
     renderHero();
     renderSheet();
     renderMe();
+    notifyApp();
+  }
+
+  // ----- 앱 모드: 블루투스 재실 확인 -----
+  let lastPresenceReport = 0;
+  let presenceInFlight = false;
+
+  /** 앱이 블루투스를 켜야 하는지 판단할 정보만 보낸다 (토큰·학번은 보내지 않음) */
+  function notifyApp() {
+    if (!IN_APP) return;
+    const mine = mySeat();
+    postToApp({
+      type: 'state',
+      loggedIn: Boolean(state.user),
+      seat: mine ? { room: mine.room, state: mine.state, usage_ends_at: mine.usage_ends_at ?? null } : null,
+      presenceWanted: Boolean(mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room)),
+    });
+  }
+
+  async function maybeReportPresence() {
+    const p = state.appPresence;
+    const mine = mySeat();
+    if (!p?.inRange || !state.user || !mine || mine.state !== 'occupied' || !PRESENCE_ROOMS.includes(mine.room)) return;
+    if (presenceInFlight || Date.now() - lastPresenceReport < PRESENCE_REPORT_MS) return;
+    presenceInFlight = true;
+    lastPresenceReport = Date.now();
+    try {
+      const res = await api.presence();
+      state.lastPresenceOk = Date.now();
+      if (res?.extended) await loadSeats(); // 남은 시간 표시를 서버 값으로 갱신
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) await logout(false);
+      // 409(이용 중 아님) 등은 다음 좌석 갱신 때 자연히 정리된다
+    } finally {
+      presenceInFlight = false;
+    }
+  }
+
+  if (IN_APP) {
+    document.body.classList.add('app-mode');
+    onAppPresence((p) => {
+      state.appPresence = p;
+      renderHero();
+      maybeReportPresence();
+    });
+  }
+
+  /** 상태 카드 안의 재실 확인 안내 (열람실 A 이용 중일 때만) */
+  function presenceChip(mine) {
+    if (!PRESENCE_ROOMS.includes(mine.room)) return null;
+    if (!IN_APP) return el('span', 'chip-glass', '📱 모바일 앱을 켜 두면 자리에 있는 동안 자동 연장돼요');
+    const p = state.appPresence;
+    if (!p) return el('span', 'chip-glass', '📶 블루투스 확인 준비 중…');
+    if (p.inRange) return el('span', 'chip-glass presence-ok', `📶 자리 확인됨${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 남은 시간이 2시간 아래로 줄지 않아요`);
+    if (p.piConnected) return el('span', 'chip-glass presence-weak', `📶 신호 약함${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 시간이 줄어들고 있어요`);
+    // 자세한 이유(권한·검색 실패 등)는 앱 상단 바에 표시된다
+    return el('span', 'chip-glass presence-off', '📵 블루투스로 자리 확인 안 됨 · 시간이 줄어들고 있어요');
   }
 
   function showMySeatOnMap(seat) {
@@ -479,6 +540,8 @@ export function renderHome(root) {
           right.append(el('div', 'k', '남은 이용 시간'), liveCountdown(mine.usage_ends_at, 'div', 'countdown', USAGE_URGENT_MS));
           top.append(right);
           box.append(top, el('div', 'd', `${formatTime(mine.usage_ends_at)}까지 이용할 수 있어요. 시간이 끝나면 자동으로 퇴실돼요.`));
+          const chip = presenceChip(mine);
+          if (chip) box.append(chip);
         } else {
           box.append(top, el('div', 'd', '공부를 마치면 꼭 [퇴실]을 눌러 주세요. 다음 사람에게 바로 자리가 돌아가요.'));
         }
@@ -789,7 +852,7 @@ export function renderHome(root) {
   let idleTimer = null;
   function resetIdleTimer() {
     clearTimeout(idleTimer);
-    if (!state.user) return;
+    if (!state.user || IN_APP) return; // 앱(개인 휴대폰)에서는 자동 로그아웃하지 않음
     idleTimer = setTimeout(() => {
       showMessage('일정 시간 사용하지 않아 자동 로그아웃되었습니다.', 'info');
       logout(true);

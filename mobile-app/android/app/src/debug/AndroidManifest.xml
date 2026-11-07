@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Debug builds only: allow http:// so the app can load a local kiosk dev
+         server (flutter build with dart-define KIOSK_URL=http://10.0.2.2:5173/).
+         Release builds keep the default (https only). -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>
