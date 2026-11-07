@@ -60,19 +60,6 @@ export function normalizeBle(ble) {
   return { server: flag(ble.server), connected };
 }
 
-/**
- * temperature: 열람실 온도·습도 (예: 열람실 B 아두이노의 DHT11). 허용 범위 밖이면 버린다.
- * { temperature_c: -20~60 (소수 1자리), humidity: 0~100 | null } 또는 { sensor_error: true }
- */
-export function normalizeEnvironment(env) {
-  if (!env || typeof env !== 'object') return null;
-  if (env.sensor_error === true) return { sensor_error: true };
-  const t = Number(env.temperature_c);
-  if (!Number.isFinite(t) || t < -20 || t > 60) return null;
-  const h = Number.isInteger(env.humidity) && env.humidity >= 0 && env.humidity <= 100 ? env.humidity : null;
-  return { temperature_c: Math.round(t * 10) / 10, humidity: h };
-}
-
 /** 장치 보고 본문 정규화 */
 export function normalizeDeviceStatus(body) {
   const room = String(body?.room ?? '').trim().toUpperCase();
@@ -93,7 +80,6 @@ export function normalizeDeviceStatus(body) {
     serial: flag(body?.serial),
     central_library: flag(body?.central_library),
     ble: normalizeBle(body?.ble),
-    environment: normalizeEnvironment(body?.environment),   // temperature
   };
 }
 
@@ -130,8 +116,6 @@ export function buildSystemStatus(rows, central, now = Date.now()) {
       lcd: status?.lcd ?? null,
       serial: status?.serial ?? null,
       ...(expected.kind === 'raspberry-pi' ? { ble: status?.ble ?? null } : {}),
-      // temperature: 장치가 연결되어 있을 때만 (끊긴 장치의 옛 온도는 보여주지 않음)
-      environment: age <= ONLINE_MS ? (status?.environment ?? null) : null,
     };
   });
 

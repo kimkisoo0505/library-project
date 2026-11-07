@@ -13,7 +13,7 @@
 | 열람실 | 담당 장치 | LCD | 상태 |
 |---|---|---|---|
 | **A** | **라즈베리파이** (서버 역할 겸임), 쉴드 I2C 1번 | Seeed Grove LCD RGB Backlight v4 (16x2, 텍스트 0x3E / 백라이트 0x62) | 구현됨 |
-| B | 아두이노 UNO 1 (라즈베리파이 USB, 시리얼 `85734323530351917281`) | 일반 I2C 16x2 (PCF8574, **0x3F**), SDA→A4 / SCL→A5 · **온도 DHT11: S→D2, +→3.3V, −→GND** | 펌웨어 `room_lcd` (+`temperature.h`) — 라즈베리파이 `agent/arduino_rooms.py` 가 화면 전송·온도 보고 |
+| B | 아두이노 UNO 1 (라즈베리파이 USB, 시리얼 `85734323530351917281`) | 일반 I2C 16x2 (PCF8574, **0x3F**), SDA→A4 / SCL→A5 | 펌웨어 `room_lcd` — 라즈베리파이 `agent/arduino_rooms.py` 가 화면 전송 |
 | C | 아두이노 2 | (예정) | 아두이노 구현은 별도 요청 시 |
 
 ### 열람실 LCD 표시 규칙

@@ -28,7 +28,6 @@ INBOUND_ARITY: dict[str, tuple[int, int]] = {
     "PONG": (1, 1),    # PONG,<seq>
     "ACK": (1, 2),     # ACK,<command>[,<value>]
     "ERR": (1, 2),     # ERR,<code>[,<detail>]
-    "TEMP": (1, 2),    # TEMP,<온도°C>[,<습도%>]  (열람실 온도 센서, 예: TEMP,24.0,45)
 }
 OUTBOUND_ARITY: dict[str, tuple[int, int]] = {
     "PING": (1, 1),    # PING,<seq>

@@ -132,30 +132,6 @@ class LinkTests(unittest.IsolatedAsyncioTestCase):
         await self.link._on_connection(False)
         self.assertFalse(self.link.status_payload()["serial"])
 
-    # ----- temperature (DHT11) -----
-    async def test_temperature_reported_when_fresh(self) -> None:
-        await self.connect()
-        self.assertIsNone(self.link.status_payload()["environment"], "측정 전에는 None → 키오스크 '설치 예정'")
-        await self.link._on_message(SerialMessage("TEMP", ("24.0", "45"), "TEMP,24.0,45"))
-        self.assertEqual(self.link.status_payload()["environment"], {"temperature_c": 24.0, "humidity": 45})
-        self.clock.now += 61
-        self.assertIsNone(self.link.status_payload()["environment"], "60초 넘게 새 측정이 없으면 보내지 않음")
-
-    async def test_temperature_validation_and_error(self) -> None:
-        await self.connect()
-        for fields in (("99.0", "45"), ("24.0", "150"), ("abc",), ("-30.0",)):
-            await self.link._on_message(SerialMessage("TEMP", fields, "TEMP"))
-        self.assertIsNone(self.link.climate, "범위 밖/형식 오류 값은 버림")
-        await self.link._on_message(SerialMessage("ERR", ("TEMP_SENSOR",), "ERR,TEMP_SENSOR"))
-        self.assertEqual(self.link.status_payload()["environment"], {"sensor_error": True})
-        await self.link._on_message(SerialMessage("TEMP", ("23.5",), "TEMP,23.5"))
-        self.assertEqual(self.link.status_payload()["environment"], {"temperature_c": 23.5, "humidity": None})
-
-    def test_temp_message_parses(self) -> None:
-        from agent.serial_manager import parse_line
-        self.assertEqual(parse_line(b"TEMP,24.0,45\n").fields, ("24.0", "45"))
-        self.assertEqual(parse_line(b"TEMP,-5.0\n").fields, ("-5.0",))
-
     async def test_status_loop_reports_as_arduino_device(self) -> None:
         import asyncio
 

@@ -8,7 +8,6 @@ import { TEST_STUDENTS } from '../test-accounts.js';
 import { createCentralLibraryPanel, congestionLevel, createLevelPill } from '../components/central-library.js';
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from '../components/system-status.js';
 import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from '../app-bridge.js';
-import { createRoomClimate } from '../components/room-climate.js'; // room-climate
 
 /** 앱 모드: 재실 확인을 서버에 보내는 최소 간격 (서버는 남은 시간을 2시간으로 유지) */
 const PRESENCE_REPORT_MS = 60_000;
@@ -127,9 +126,8 @@ export function renderHome(root) {
   const roomTitle = el('h3');
   const roomCount = el('span', 'cnt');
   roomHead.append(roomTitle, roomCount);
-  const roomClimate = createRoomClimate(); // room-climate
   const mapSection = el('section', 'card map-section');
-  mapSection.append(roomTabs.element, roomHead, roomClimate.element, buildFilters(), seatMap.element, legend); // room-climate (roomClimate.element)
+  mapSection.append(roomTabs.element, roomHead, buildFilters(), seatMap.element, legend);
 
   const miniCard = el('section', 'card mini-card');
   const miniButton = el('button', 'mini-cl');
@@ -593,7 +591,6 @@ export function renderHome(root) {
   }
 
   function renderRoomHead() {
-    roomClimate.setRoom(state.room); // room-climate
     const room = state.rooms.find((r) => r.code === state.room);
     roomTitle.textContent = roomPlace(state.room) || roomName(state.room); // 시안: 열람실 탭 아래에 강의실 호수
     roomCount.replaceChildren();
@@ -900,7 +897,6 @@ export function renderHome(root) {
     clearInterval(pollTimer);
     clearInterval(centralTimer);
     if (statusTimer) clearInterval(statusTimer);
-    roomClimate.stop(); // room-climate
     clearInterval(countdownTimer);
     clearTimeout(idleTimer);
     clearTimeout(toastTimer);

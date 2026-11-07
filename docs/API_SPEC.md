@@ -184,8 +184,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
     { "room": "C", "kind": "arduino", "label": "아두이노 (열람실 C)", "online": false, "last_seen_at": null } ],
   "central_library": { "ok": true, "fetched_at": "...", "degraded": false } }
 ```
-`online` = 마지막 보고 90초 이내. `central_library.ok` = 3분 이내 정상 수신.
-각 장치에는 `environment` (열람실 온도·습도) 가 붙습니다: `{ "temperature_c": 24.0, "humidity": 45 }` / `{ "sensor_error": true }` / `null`(센서 없음 = 키오스크 '설치 예정'). 연결 끊긴 장치는 `null`. 장치 보고(`POST /device/status`) 의 `environment` 는 -20~60°C, 습도 0~100 만 허용합니다. `ble` 은 라즈베리파이 항목에만 있다.
+`online` = 마지막 보고 90초 이내. `central_library.ok` = 3분 이내 정상 수신. `ble` 은 라즈베리파이 항목에만 있다.
 
 ## 7. WebSocket
 

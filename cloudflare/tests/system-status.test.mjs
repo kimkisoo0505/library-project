@@ -77,23 +77,3 @@ test('buildSystemStatus: 라즈베리파이에만 ble 정보', () => {
   const old = buildSystemStatus([{ ...rows[0], payload: '{}' }], null, NOW);
   assert.equal(old.devices[0].ble, null, '구버전 에이전트 보고 = 정보 없음');
 });
-
-// ----- temperature -----
-test('normalizeEnvironment: 범위 검증, 센서 오류', async () => {
-  const { normalizeEnvironment } = await import('../workers/system-status.js');
-  assert.deepEqual(normalizeEnvironment({ temperature_c: 24.04, humidity: 45 }), { temperature_c: 24, humidity: 45 });
-  assert.deepEqual(normalizeEnvironment({ temperature_c: '23.5', humidity: 150 }), { temperature_c: 23.5, humidity: null });
-  assert.equal(normalizeEnvironment({ temperature_c: 99 }), null);
-  assert.equal(normalizeEnvironment({ temperature_c: 'hot' }), null);
-  assert.equal(normalizeEnvironment(null), null);
-  assert.deepEqual(normalizeEnvironment({ sensor_error: true, temperature_c: 20 }), { sensor_error: true });
-});
-
-test('buildSystemStatus: 연결된 장치의 온도만 공개', () => {
-  const env = { temperature_c: 24, humidity: 45 };
-  const fresh = [{ device_id: 'arduino-b', room: 'B', last_seen_at: ago(20_000), payload: JSON.stringify({ environment: env }) }];
-  assert.deepEqual(buildSystemStatus(fresh, null, NOW).devices[1].environment, env);
-  assert.equal(buildSystemStatus(fresh, null, NOW).devices[0].environment, null, '열람실 A: 센서 없음 → null');
-  const stale = [{ ...fresh[0], last_seen_at: ago(5 * 60_000) }];
-  assert.equal(buildSystemStatus(stale, null, NOW).devices[1].environment, null, '끊긴 장치의 옛 온도는 숨김');
-});
