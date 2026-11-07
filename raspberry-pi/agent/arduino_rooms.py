@@ -39,6 +39,8 @@ REFRESH_SECONDS = 10.0          # 화면이 그대로여도 이 간격으로 다
 BOOT_WAIT_SECONDS = 3.0         # 포트를 열면 UNO 가 리셋됨 → HELLO 를 기다리되 최대 이 시간 후 전송 시작
 STATUS_INTERVAL_SECONDS = 30.0
 EXPECTED_FIRMWARE_PREFIX = "ROOMLCD"
+CLIMATE_FRESH_SECONDS = 60.0         # temperature: 이보다 오래된 측정값은 보내지 않음 (아두이노는 10초마다 측정)
+CLIMATE_TEMP_RANGE = (-20.0, 60.0)   # temperature: 실내 센서로서 그럴듯한 범위
 
 
 class StatusCloud(Protocol):
@@ -92,6 +94,8 @@ class ArduinoRoomLink:
         self._clock = clock
         self.firmware: str | None = None
         self.lcd_missing = False             # 아두이노가 ERR,LCD_NOT_FOUND 보고
+        self.climate: tuple[float, int | None, float] | None = None   # temperature: (°C, 습도%, 측정 시각)
+        self.climate_error = False                                     # temperature: ERR,TEMP_SENSOR
         self._connected_at: float | None = None
         self._last_frame: Frame | None = None
         self._last_sent = 0.0
@@ -108,9 +112,13 @@ class ArduinoRoomLink:
                 ok = self.firmware.startswith(EXPECTED_FIRMWARE_PREFIX)
                 log_event(self._log, "arduino_room.hello", "아두이노 열람실 LCD 펌웨어 확인",
                           level=logging.INFO if ok else logging.WARNING, room=self.room, firmware=self.firmware)
+            case "TEMP":                                      # temperature
+                self._on_temperature(message.fields)          # temperature
             case "ERR":
                 if message.fields[0] == "LCD_NOT_FOUND":
                     self.lcd_missing = True
+                if message.fields[0] == "TEMP_SENSOR":        # temperature
+                    self.climate_error = True                 # temperature
                 log_event(self._log, "arduino_room.error", "아두이노 오류 보고", level=logging.WARNING,
                           room=self.room, code=message.fields[0], detail=message.fields[1] if len(message.fields) > 1 else "")
             case _:
@@ -119,11 +127,36 @@ class ArduinoRoomLink:
     async def _on_connection(self, connected: bool) -> None:
         self.firmware = None
         self.lcd_missing = False
+        self.climate = None          # temperature
+        self.climate_error = False   # temperature
         self._last_frame = None
         self._connected_at = self._clock() if connected else None
         log_event(self._log, "arduino_room.connected" if connected else "arduino_room.disconnected",
                   "아두이노 연결" if connected else "아두이노 연결 끊김",
                   level=logging.INFO if connected else logging.WARNING, room=self.room, port=self.port)
+
+    # ----- temperature: 열람실 온도·습도 (DHT11). 온도 센서를 빼면 이 블록과 "temperature" 주석 줄 삭제 -----
+
+    def _on_temperature(self, fields: tuple[str, ...]) -> None:
+        try:
+            temp = round(float(fields[0]), 1)
+            hum = int(fields[1]) if len(fields) > 1 else None
+        except ValueError:
+            return
+        if not CLIMATE_TEMP_RANGE[0] <= temp <= CLIMATE_TEMP_RANGE[1] or (hum is not None and not 0 <= hum <= 100):
+            log_event(self._log, "arduino_room.temperature_out_of_range", "온도 값이 범위를 벗어남",
+                      level=logging.WARNING, room=self.room, temperature=temp, humidity=hum)
+            return
+        self.climate = (temp, hum, self._clock())
+        self.climate_error = False
+
+    def climate_payload(self) -> dict[str, Any] | None:
+        """서버로 보낼 온도 정보. 최근 측정이 없으면 None (키오스크: '설치 예정' 또는 '확인 불가')."""
+        if self.climate is not None and self._clock() - self.climate[2] <= CLIMATE_FRESH_SECONDS:
+            return {"temperature_c": self.climate[0], "humidity": self.climate[1]}
+        if self.climate_error:
+            return {"sensor_error": True}
+        return None
 
     # ----- 라즈베리파이 → 아두이노 -----
 
@@ -169,6 +202,7 @@ class ArduinoRoomLink:
             "serial": self.serial.connected,
             "lcd": (self.firmware is not None and self.firmware.startswith(EXPECTED_FIRMWARE_PREFIX)
                     and not self.lcd_missing),
+            "environment": self.climate_payload(),   # temperature
         }
 
     async def _status_loop(self, cloud: StatusCloud, is_online: Callable[[], bool], stop: asyncio.Event) -> None:

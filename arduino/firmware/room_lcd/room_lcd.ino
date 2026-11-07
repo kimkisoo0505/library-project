@@ -26,8 +26,9 @@
 
 #include <Wire.h>
 #include <string.h>
+#include "temperature.h"   // temperature (DHT11 온도·습도, D2) — 제거 시 이 줄과 "// temperature" 줄 삭제
 
-#define FIRMWARE_ID "ROOMLCD-0.1.0"
+#define FIRMWARE_ID "ROOMLCD-0.2.0"
 #define SERIAL_BAUD 115200
 #define LCD_ADDR 0x3F          // i2c 주소 (뒷면 기판에 따라 0x27 일 수도 있음)
 #define LCD_COLS 16
@@ -205,6 +206,7 @@ void setup() {
     setLine(1, "Waiting for Pi");
   }
   lastCommandAt = millis();
+  temperatureSetup();   // temperature
   sendLine("HELLO", FIRMWARE_ID);
   if (!lcdPresent) {
     char addr[5];
@@ -213,8 +215,11 @@ void setup() {
   }
 }
 
+void sendTemp(const char *a, const char *b, const char *c) { sendLine(a, b, c); }   // temperature
+
 void loop() {
   readSerial();
+  temperatureLoop(sendTemp);   // temperature
   if (!offlineShown && millis() - lastCommandAt > WATCHDOG_MS) {
     setLine(0, "");
     setLine(1, "Offline");

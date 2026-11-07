@@ -90,6 +90,8 @@ KIND[,FIELD1[,FIELD2]]\n
 |---|---|
 | `HELLO,ROOMLCD-0.1.0` | 부팅 완료 (USB 포트를 열면 UNO 가 리셋되므로 연결 때마다 옴) |
 | `PONG,<seq>` | PING 응답 |
+| `TEMP,<°C>,<습도%>` | 온도·습도 (DHT11, 10초마다, 예: `TEMP,24.0,45`) — `temperature.h` |
+| `ERR,TEMP_SENSOR` | 온도 센서 3회 연속 읽기 실패 (한 번만 보냄, 복구되면 다시 TEMP) |
 | `ERR,LCD_NOT_FOUND,<주소>` | I2C LCD 가 응답하지 않음 (배선/주소 확인) |
 | `ERR,<BAD_ROW\|BAD_TEXT\|BAD_ARGS\|LINE_TOO_LONG\|UNKNOWN_CMD\|SERVO_DISABLED>` | 명령 오류 |
 
@@ -107,3 +109,12 @@ KIND[,FIELD1[,FIELD2]]\n
 | SCL | A5 |
 
 I2C 주소는 펌웨어의 `#define LCD_ADDR` (열람실 B 아두이노: `0x3F`).
+
+### 온도·습도 센서 (DHT11, 3핀 기판) — `room_lcd/temperature.h`
+| DHT11 핀 | UNO 핀 |
+|---|---|
+| S (DATA/OUT) | **D2** |
+| + (VCC) | **3.3V** (5V 핀은 LCD 가 사용 중, 브레드보드로 나누면 5V 도 가능) |
+| − (GND) | GND |
+
+제거: `temperature.h` 삭제 + `room_lcd.ino` 에서 `temperature` 주석이 붙은 줄 4개 삭제. 센서를 꽂지 않아도 펌웨어는 정상 동작하며(`ERR,TEMP_SENSOR` 한 번만 보냄) 키오스크는 '설치 예정' 으로 표시합니다.
