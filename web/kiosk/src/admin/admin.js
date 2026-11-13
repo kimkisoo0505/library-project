@@ -11,6 +11,7 @@ import { createLoginForm } from './components/login-form.js';
 import { STATE_LABELS } from './components/seat-card.js';
 import { createRoomTabs, roomPreference } from './components/room-tabs.js';
 import { TEST_ADMIN } from '../common/test-accounts.js';
+import { MODES, MODE_LABELS, switchMode } from '../common/usage-mode.js';
 import { createLayoutEditor } from './components/layout-editor.js';
 import { createLocationPicker } from './components/location-picker.js';
 
@@ -47,9 +48,20 @@ export function renderAdmin(root) {
   const header = el('header', 'page-header');
   const title = el('h1', null, '관리자');
   const userBox = el('div', 'user-box');
-  const back = el('a', 'btn btn-ghost', '키오스크로');
-  back.href = '#/';
-  header.append(title, userBox, back);
+  // 상단 화면 선택: [개인 사용 | 키오스크 | 관리자] (학생 화면과 같은 줄 모양). 이 화면은 관리자 칸이 선택된 상태.
+  const modeToggle = el('div', 'mode-toggle');
+  modeToggle.setAttribute('role', 'radiogroup');
+  modeToggle.setAttribute('aria-label', '화면 선택: 개인 사용 · 키오스크 · 관리자');
+  for (const mode of [...MODES, 'admin']) {
+    const isAdmin = mode === 'admin';
+    const b = el('button', isAdmin ? 'on' : null, isAdmin ? '관리자' : MODE_LABELS[mode]);
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(isAdmin));
+    if (!isAdmin) b.addEventListener('click', () => switchMode(mode)); // 그 학생 화면으로 이동 (선택 기억)
+    modeToggle.append(b);
+  }
+  header.append(title, modeToggle, userBox);
 
   const message = el('p', 'message');
   message.setAttribute('role', 'status');

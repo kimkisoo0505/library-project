@@ -114,7 +114,7 @@ export function renderKioskHome(root) {
   const usageMode = 'kiosk';
   const modeToggle = el('div', 'mode-toggle');
   modeToggle.setAttribute('role', 'radiogroup');
-  modeToggle.setAttribute('aria-label', '사용 모드');
+  modeToggle.setAttribute('aria-label', '화면 선택: 개인 사용 · 키오스크 · 관리자');
   const modeButtons = {};
   for (const mode of MODES) {
     const b = el('button', null, MODE_LABELS[mode]);
@@ -125,6 +125,14 @@ export function renderKioskHome(root) {
     modeButtons[mode] = b;
     modeToggle.append(b);
   }
+  // 세 번째 칸: 관리자 화면 (예전에는 화면 맨 아래 링크였음). 관리자 화면은 별도 코드로 새로 열린다.
+  const adminButton = el('button', null, '관리자');
+  adminButton.type = 'button';
+  adminButton.setAttribute('role', 'radio');
+  adminButton.setAttribute('aria-checked', 'false');
+  adminButton.title = '관리자 화면 (관리자 로그인 필요)';
+  adminButton.addEventListener('click', () => { location.hash = '#/admin'; });
+  modeToggle.append(adminButton);
   function renderModeToggle() {
     for (const [mode, b] of Object.entries(modeButtons)) {
       b.classList.toggle('on', mode === usageMode);
@@ -166,15 +174,39 @@ export function renderKioskHome(root) {
   miniCard.append(miniButton);
 
   const footer = el('footer', 'page-footer');
-  const adminLink = el('a', null, '관리자');
-  adminLink.href = '#/admin';
-  footer.append(adminLink);
 
   const centralLibrary = createCentralLibraryPanel();
 
   const systemStatus = SHOW_SYSTEM_STATUS ? createSystemStatusBar() : null;
 
-  seatsView.append(hero, mapSection, miniCard, ...(systemStatus ? [systemStatus.element] : []), footer);
+  // 서버 상태 점검 (VITE_SHOW_SYSTEM_STATUS=true 일 때만): 화면 맨 아래 버튼. 기본은 숨김,
+  // 누르면 상태 표시줄을 보여 주고 그동안만 15초마다 갱신한다 (닫혀 있을 때는 서버에 묻지 않음).
+  const statusButton = systemStatus ? el('button', 'status-toggle', '서버 상태 점검') : null;
+  let statusOpen = false;
+  let statusTimer = null;
+  if (systemStatus) {
+    statusButton.type = 'button';
+    statusButton.setAttribute('aria-expanded', 'false');
+    systemStatus.element.hidden = true;
+    statusButton.addEventListener('click', () => setStatusOpen(!statusOpen));
+    footer.append(statusButton, systemStatus.element);
+  }
+  function setStatusOpen(open) {
+    if (!systemStatus) return;
+    statusOpen = open;
+    systemStatus.element.hidden = !open;
+    statusButton.textContent = open ? '서버 상태 점검 닫기' : '서버 상태 점검';
+    statusButton.setAttribute('aria-expanded', String(open));
+    clearInterval(statusTimer);
+    statusTimer = null;
+    if (open) {
+      loadSystemStatus();
+      statusTimer = setInterval(() => { if (!document.hidden) loadSystemStatus(); }, SYSTEM_STATUS_POLL_MS);
+      systemStatus.element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  seatsView.append(hero, mapSection, miniCard, footer);
 
   // ----- 중앙도서관 탭 -----
   const centralView = el('main', 'view page view-central');
@@ -854,8 +886,6 @@ export function renderKioskHome(root) {
   const pollTimer = setInterval(() => { if (!state.live) loadSeats(); }, FALLBACK_POLL_MS);
   loadCentralLibrary();
   const centralTimer = setInterval(() => { if (!document.hidden) loadCentralLibrary(); }, CENTRAL_LIBRARY_POLL_MS);
-  loadSystemStatus();
-  const statusTimer = systemStatus ? setInterval(() => { if (!document.hidden) loadSystemStatus(); }, SYSTEM_STATUS_POLL_MS) : null;
   const countdownTimer = setInterval(updateCountdown, COUNTDOWN_TICK_MS);
 
   renderRoomHead();

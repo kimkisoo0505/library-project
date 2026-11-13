@@ -596,3 +596,7 @@ h2 { font-size: 1.1rem; }
   .tabbar button { padding: 8px 10px; }
   #app[data-page='home'] .topbar .live { font-size: 0; gap: 0; }
 }
+
+/* 관리자 화면 상단 [개인 사용 | 키오스크 | 관리자]: 페이지 배경과 같은 색이라 조금 진하게 */
+.page-header .mode-toggle { background: #e4e8ee; }
+.page-header .mode-toggle button.on { color: var(--kg); }

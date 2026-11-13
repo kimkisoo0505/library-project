@@ -568,3 +568,14 @@ h2 { font-size: 1.1rem; }
   .tabbar button { padding: 8px 10px; }
   #app[data-page='home'] .topbar .live { font-size: 0; gap: 0; }
 }
+
+/* ----- 화면 맨 아래: [서버 상태 점검] 버튼 (누를 때만 상태 표시줄 표시) ----- */
+.page-footer { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.status-toggle {
+  border: 1px solid var(--line); background: var(--card); color: var(--sub); cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+}
+.status-toggle:hover { color: var(--ink2); }
+.status-toggle[aria-expanded='true'] { color: var(--kg); border-color: var(--kg); }
+.status-toggle:focus-visible { outline: 3px solid var(--kg); outline-offset: 2px; }
+.page-footer .system-status { width: 100%; max-width: 640px; text-align: left; }

@@ -602,3 +602,14 @@ h2 { font-size: 1.1rem; }
 .km-label { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 3px 7px; font-size: 12px; font-weight: 700; color: var(--ink2); white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
 .km-label.is-best { background: var(--kg); color: #fff; border-color: var(--kg); }
 .km-label.is-full { color: var(--bad); }
+
+/* ----- 화면 맨 아래: [서버 상태 점검] 버튼 (누를 때만 상태 표시줄 표시) ----- */
+.page-footer { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.status-toggle {
+  border: 1px solid var(--line); background: var(--card); color: var(--sub); cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+}
+.status-toggle:hover { color: var(--ink2); }
+.status-toggle[aria-expanded='true'] { color: var(--kg); border-color: var(--kg); }
+.status-toggle:focus-visible { outline: 3px solid var(--kg); outline-offset: 2px; }
+.page-footer .system-status { width: 100%; max-width: 640px; text-align: left; }
