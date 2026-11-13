@@ -22,7 +22,7 @@
 kiosk/
 ├── index.html
 ├── vite.config.js          /api → 127.0.0.1:8787 프록시 (WebSocket 포함)
-├── public/favicon.svg
+├── public/                 kgu-logo.png(상단 바 로고), favicon-16/32.png · apple-touch-icon.png(탭 아이콘), _headers
 └── src/
     ├── main.js             해시 라우터
     ├── api.js              REST 클라이언트, 학생/관리자 토큰 분리 보관
