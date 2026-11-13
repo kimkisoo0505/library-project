@@ -150,7 +150,7 @@ sudo systemctl restart library-agent && journalctl -u library-agent -n 30 -o cat
     "R6rhtTA72rp4" | node scripts/accounts.mjs create-student TEST-0003 테스트학생3 --remote --yes --password-stdin
     node scripts/accounts.mjs create-admin testadmin --remote --yes      # 비밀번호 새로 발급됨
     ```
-    (키오스크 테스트 계정 안내 `web/kiosk/src/test-accounts.js` 와 비밀번호를 맞춰야 함)
+    (키오스크 테스트 계정 안내 `web/kiosk/src/common/test-accounts.js` 와 비밀번호를 맞춰야 함)
 
 ### 4-3. 라즈베리파이 (SD 카드를 새로 굽는 경우) — 지금까지 SSH 로 실행한 작업 전부
 Raspberry Pi Imager 로 **Raspberry Pi OS Lite 32-bit** 설치 (hostname `library-server`, 사용자 `pi`, SSH 켜기, 집 Wi-Fi 입력) 후:

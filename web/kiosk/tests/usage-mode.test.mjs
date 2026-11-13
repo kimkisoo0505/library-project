@@ -1,7 +1,7 @@
 // 사용 모드(개인 사용 / 키오스크) 기본값·저장 단위 테스트
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isPhone, defaultMode, loadMode, saveMode, MODE_STORAGE_KEY } from '../src/usage-mode.js';
+import { isPhone, defaultMode, loadMode, saveMode, MODE_STORAGE_KEY } from '../src/common/usage-mode.js';
 
 const UA = {
   androidPhone: 'Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36',

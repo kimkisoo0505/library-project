@@ -35,3 +35,13 @@ export function saveMode(mode, storage = globalThis.localStorage) {
   if (!MODES.includes(mode)) return;
   try { storage?.setItem(MODE_STORAGE_KEY, mode); } catch { /* 저장 불가 환경: 이번 화면에서만 적용 */ }
 }
+
+/** 모드별 화면 주소. 키오스크와 개인 사용은 서로 다른 코드(src/kiosk/, src/personal/)로 그린다. */
+export const MODE_ROUTES = Object.freeze({ personal: '#/personal', kiosk: '#/kiosk' });
+
+/** 상단 토글: 선택을 기억하고 그 모드의 주소로 이동 (주소가 바뀌면 화면을 새로 연다) */
+export function switchMode(mode, storage = globalThis.localStorage) {
+  if (!MODES.includes(mode)) return;
+  saveMode(mode, storage);
+  globalThis.location.hash = MODE_ROUTES[mode];
+}

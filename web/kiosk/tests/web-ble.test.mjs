@@ -5,7 +5,7 @@ import {
   createWebBlePresence, webBleSupport, parseResponse,
   BLE_SERVICE, BLE_COMMAND, BLE_RESPONSE, BLE_DEVICE_NAME,
   PING_INTERVAL_MS, PONG_TIMEOUT_MS, FRESH_MS, MAX_RECONNECT_ATTEMPTS,
-} from '../src/web-ble.js';
+} from '../src/personal/web-ble.js';
 
 // ----- 가짜 시계 -----
 function fakeClock() {

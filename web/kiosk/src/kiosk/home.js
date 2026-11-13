@@ -1,18 +1,21 @@
-import { api, ApiError, session } from '../api.js';
-import { SeatSocket } from '../websocket.js';
-import { createLoginForm } from '../components/login-form.js';
-import { createSeatMap } from '../components/seat-map.js';
-import { STATE_LABELS } from '../components/seat-card.js';
-import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
-import { TEST_STUDENTS } from '../test-accounts.js';
-import { createCentralLibraryPanel, congestionLevel, createLevelPill } from '../components/central-library.js';
-import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from '../components/system-status.js';
-import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from '../app-bridge.js';
-import { createWebBlePresence, webBleSupport } from '../web-ble.js';
-import { MODES, MODE_LABELS, loadMode, saveMode } from '../usage-mode.js';
-
-/** 앱 모드: 재실 확인을 서버에 보내는 최소 간격 (서버는 남은 시간을 2시간으로 유지) */
-const PRESENCE_REPORT_MS = 60_000;
+/**
+ * 키오스크 모드 학생 화면 (#/kiosk) — 열람실 입구 등에 놓인, 누구나 쓰는 공용 기기용.
+ *
+ * 개인 사용 모드(src/personal/)와 완전히 별개의 코드다 (처음엔 같은 화면을 복제해 시작했다).
+ * 개인 특화 기능(블루투스 자동 연장, 앱 연동)은 넣지 않는다. 일정 시간 입력이 없으면 자동 로그아웃한다.
+ * 서버 통신(api.js, websocket.js)만 src/common/ 의 공용 코드를 쓴다.
+ */
+import './style.css';
+import { api, ApiError, session } from '../common/api.js';
+import { SeatSocket } from '../common/websocket.js';
+import { TEST_STUDENTS } from '../common/test-accounts.js';
+import { MODES, MODE_LABELS, switchMode } from '../common/usage-mode.js';
+import { createLoginForm } from './components/login-form.js';
+import { createSeatMap } from './components/seat-map.js';
+import { STATE_LABELS } from './components/seat-card.js';
+import { createRoomTabs, roomPreference } from './components/room-tabs.js';
+import { createCentralLibraryPanel, congestionLevel, createLevelPill } from './components/central-library.js';
+import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from './components/system-status.js';
 
 const SYSTEM_STATUS_POLL_MS = 15_000;
 
@@ -74,8 +77,8 @@ const USAGE_HOUR_CHOICES = [1, 2, 3, 4];
 const USAGE_URGENT_MS = 10 * 60_000;     // 이용 종료 10분 전부터 강조
 const EXPIRED_RELOAD_MS = 20_000;        // 종료 시각이 지난 뒤 서버 자동 퇴실(1분 주기)을 기다리며 다시 조회
 
-/** 학생용 키오스크 화면 */
-export function renderHome(root) {
+/** 키오스크 모드 학생 화면 */
+export function renderKioskHome(root) {
   const state = {
     rooms: [],
     seats: [],          // 전체 열람실 좌석 (내 좌석이 다른 열람실에 있어도 찾을 수 있도록)
@@ -107,19 +110,18 @@ export function renderHome(root) {
   const liveBadge = el('span', 'live is-offline', '연결 중');
   const userBox = el('div', 'user-box');
 
-  // 사용 모드 토글 (개인 사용 / 키오스크). 개인 특화 기능은 개인 사용 모드에서만 보인다. 앱은 항상 개인 사용.
-  let usageMode = loadMode({ inApp: IN_APP });
+  // 사용 모드 토글: 이 화면은 키오스크. [개인 사용]을 누르면 개인 사용 화면(#/personal)으로 이동한다.
+  const usageMode = 'kiosk';
   const modeToggle = el('div', 'mode-toggle');
   modeToggle.setAttribute('role', 'radiogroup');
   modeToggle.setAttribute('aria-label', '사용 모드');
-  modeToggle.hidden = IN_APP;
   const modeButtons = {};
   for (const mode of MODES) {
     const b = el('button', null, MODE_LABELS[mode]);
     b.type = 'button';
     b.setAttribute('role', 'radio');
     b.title = mode === 'personal' ? '본인 휴대폰: 블루투스 자동 연장 등 개인 기능 사용' : '입구의 공용 기기: 개인 기능 숨김';
-    b.addEventListener('click', () => setUsageMode(mode));
+    b.addEventListener('click', () => { if (mode !== usageMode) switchMode(mode); });
     modeButtons[mode] = b;
     modeToggle.append(b);
   }
@@ -128,7 +130,6 @@ export function renderHome(root) {
       b.classList.toggle('on', mode === usageMode);
       b.setAttribute('aria-checked', String(mode === usageMode));
     }
-    document.body.classList.toggle('mode-kiosk', usageMode === 'kiosk');
   }
   renderModeToggle();
   header.append(logo, brand, modeToggle, liveBadge, userBox);
@@ -433,141 +434,6 @@ export function renderHome(root) {
     renderHero();
     renderSheet();
     renderMe();
-    notifyApp();
-    syncWebBle();
-  }
-
-  // ----- 앱 모드: 블루투스 재실 확인 -----
-  let lastPresenceReport = 0;
-  let presenceInFlight = false;
-
-  /** 앱이 블루투스를 켜야 하는지 판단할 정보만 보낸다 (토큰·학번은 보내지 않음) */
-  function notifyApp() {
-    if (!IN_APP) return;
-    const mine = mySeat();
-    postToApp({
-      type: 'state',
-      loggedIn: Boolean(state.user),
-      seat: mine ? { room: mine.room, state: mine.state, usage_ends_at: mine.usage_ends_at ?? null } : null,
-      presenceWanted: Boolean(mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room)),
-    });
-  }
-
-  async function maybeReportPresence() {
-    const p = state.appPresence;
-    const mine = mySeat();
-    if (!p?.inRange || !state.user || !mine || mine.state !== 'occupied' || !PRESENCE_ROOMS.includes(mine.room)) return;
-    if (presenceInFlight || Date.now() - lastPresenceReport < PRESENCE_REPORT_MS) return;
-    presenceInFlight = true;
-    lastPresenceReport = Date.now();
-    try {
-      const res = await api.presence();
-      state.lastPresenceOk = Date.now();
-      if (res?.extended) await loadSeats(); // 남은 시간 표시를 서버 값으로 갱신
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) await logout(false);
-      // 409(이용 중 아님) 등은 다음 좌석 갱신 때 자연히 정리된다
-    } finally {
-      presenceInFlight = false;
-    }
-  }
-
-  if (IN_APP) {
-    document.body.classList.add('app-mode');
-    onAppPresence((p) => {
-      state.appPresence = p;
-      renderHero();
-      maybeReportPresence();
-    });
-  }
-
-  // ----- 모바일 웹: 브라우저 블루투스(Web Bluetooth)로 재실 확인 -----
-  // 앱이 아닐 때만. 앱과 같은 상태 모양을 state.appPresence 에 넣어 같은 보고 경로(maybeReportPresence)를 쓴다.
-  const WEB_BLE_SUPPORT = IN_APP ? 'app' : webBleSupport();
-  const webBle = WEB_BLE_SUPPORT === 'ok'
-    ? createWebBlePresence({
-      onChange: (p) => {
-        state.appPresence = p.status === 'idle' ? null : p;
-        renderHero();
-        resetIdleTimer();
-        maybeReportPresence();
-      },
-    })
-    : null;
-  let webBleResumeTried = false;
-
-  /** 열람실 A 에서 이용 중일 때만 블루투스를 유지한다. 퇴실·로그아웃하면 끊는다. */
-  function syncWebBle() {
-    if (!webBle) return;
-    const mine = mySeat();
-    const wanted = usageMode === 'personal'
-      && Boolean(state.user && mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room));
-    if (!wanted) {
-      if (webBle.active || state.appPresence) { webBle.stop(); state.appPresence = null; }
-      return;
-    }
-    if (!webBleResumeTried) {
-      webBleResumeTried = true;
-      webBle.resume(); // 이미 허락한 기기면 선택 창 없이 다시 연결 (지원 브라우저만)
-    }
-  }
-
-  function setUsageMode(mode) {
-    if (IN_APP || mode === usageMode || !MODES.includes(mode)) return;
-    usageMode = mode;
-    saveMode(mode);
-    renderModeToggle();
-    syncWebBle();      // 키오스크 모드로 바꾸면 블루투스 연결을 바로 끊는다
-    renderHero();
-    resetIdleTimer();
-    showMessage(mode === 'personal'
-      ? '개인 사용 모드: 본인 휴대폰에서 블루투스 자동 연장 등 개인 기능을 쓸 수 있어요. 자동 로그아웃되지 않아요.'
-      : '키오스크 모드: 여러 사람이 쓰는 기기용 화면이에요. 개인 기능은 숨겨지고, 사용하지 않으면 자동 로그아웃돼요.', 'info');
-  }
-
-  function webPresenceBox() {
-    const p = state.appPresence;
-    const box = el('div', 'presence-web');
-    const on = (text, cls = '') => box.append(el('span', `chip-glass ${cls}`.trim(), text));
-    const btn = (text, onClick, cls = 'presence-btn') => {
-      const b = el('button', cls, text);
-      b.type = 'button';
-      b.addEventListener('click', onClick);
-      box.append(b);
-    };
-    const status = p?.status ?? 'idle';
-    if (status === 'connected' && p.inRange) {
-      on('📶 블루투스로 자리 확인됨 · 남은 시간이 2시간 아래로 줄지 않아요', 'presence-ok');
-      btn('끄기', () => webBle.stop(), 'presence-btn presence-btn-ghost');
-    } else if (status === 'connected') {
-      on('📶 열람실 장치 응답 확인 중…', 'presence-weak');
-    } else if (status === 'choosing' || status === 'connecting') {
-      on('📶 열람실 장치에 연결하는 중…');
-    } else if (status === 'reconnecting') {
-      on(`📶 ${p.reason || '다시 연결하는 중'} · 시간이 줄어들고 있어요`, 'presence-weak');
-    } else {
-      on(p?.reason ? `📵 ${p.reason}` : '📵 블루투스로 자리를 확인하면 자리에 있는 동안 자동 연장돼요', 'presence-off');
-      btn('블루투스로 자리 확인 켜기', () => webBle.start());
-    }
-    box.append(el('span', 'presence-note', '화면을 켜 둔 동안 동작해요 · 열람실 장치(LIB-SEAT-PI)를 선택하세요'));
-    return box;
-  }
-
-  /** 상태 카드 안의 재실 확인 안내 (열람실 A 이용 중일 때만) */
-  function presenceChip(mine) {
-    if (!PRESENCE_ROOMS.includes(mine.room)) return null;
-    if (!IN_APP) {
-      if (usageMode !== 'personal') return null; // 키오스크 모드: 개인 특화 기능 숨김
-      if (webBle) return webPresenceBox();
-      const why = WEB_BLE_SUPPORT === 'insecure' ? '' : ' (이 브라우저는 블루투스를 지원하지 않아요 · Android Chrome 에서 가능)';
-      return el('span', 'chip-glass', `📱 모바일 앱을 켜 두면 자리에 있는 동안 자동 연장돼요${why}`);
-    }
-    const p = state.appPresence;
-    if (!p) return el('span', 'chip-glass', '📶 블루투스 확인 준비 중…');
-    if (p.inRange) return el('span', 'chip-glass presence-ok', `📶 자리 확인됨${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 남은 시간이 2시간 아래로 줄지 않아요`);
-    if (p.piConnected) return el('span', 'chip-glass presence-weak', `📶 신호 약함${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 시간이 줄어들고 있어요`);
-    // 자세한 이유(권한·검색 실패 등)는 앱 상단 바에 표시된다
-    return el('span', 'chip-glass presence-off', '📵 블루투스로 자리 확인 안 됨 · 시간이 줄어들고 있어요');
   }
 
   function showMySeatOnMap(seat) {
@@ -650,8 +516,6 @@ export function renderHome(root) {
           right.append(el('div', 'k', '남은 이용 시간'), liveCountdown(mine.usage_ends_at, 'div', 'countdown', USAGE_URGENT_MS));
           top.append(right);
           box.append(top, el('div', 'd', `${formatTime(mine.usage_ends_at)}까지 이용할 수 있어요. 시간이 끝나면 자동으로 퇴실돼요.`));
-          const chip = presenceChip(mine);
-          if (chip) box.append(chip);
         } else {
           box.append(top, el('div', 'd', '공부를 마치면 꼭 [퇴실]을 눌러 주세요. 다음 사람에게 바로 자리가 돌아가요.'));
         }
@@ -962,10 +826,7 @@ export function renderHome(root) {
   let idleTimer = null;
   function resetIdleTimer() {
     clearTimeout(idleTimer);
-    if (!state.user || IN_APP) return; // 앱(개인 휴대폰)에서는 자동 로그아웃하지 않음
-    if (usageMode === 'personal') return; // 개인 사용 모드(본인 휴대폰)에서는 자동 로그아웃하지 않음. 키오스크 모드만 적용
-    // 웹 블루투스 재실 확인을 켠 동안은 본인 휴대폰에서 쓰는 중이므로 자동 로그아웃하지 않는다 (끄면 다시 적용)
-    if (webBle?.active) return;
+    if (!state.user) return;
     idleTimer = setTimeout(() => {
       showMessage('일정 시간 사용하지 않아 자동 로그아웃되었습니다.', 'info');
       logout(true);
@@ -978,9 +839,6 @@ export function renderHome(root) {
   document.addEventListener('keydown', onKeydown);
   const onScroll = () => header.classList.toggle('scrolled', window.scrollY > 4);
   window.addEventListener('scroll', onScroll, { passive: true });
-  // 화면으로 돌아오면 블루투스 확인을 바로 한 번
-  const onVisible = () => { if (!document.hidden) webBle?.pingNow(); };
-  document.addEventListener('visibilitychange', onVisible);
 
   // ----- 실시간 갱신 -----
   const socket = new SeatSocket({
@@ -1016,7 +874,5 @@ export function renderHome(root) {
     activityEvents.forEach((name) => document.removeEventListener(name, resetIdleTimer));
     document.removeEventListener('keydown', onKeydown);
     window.removeEventListener('scroll', onScroll);
-    document.removeEventListener('visibilitychange', onVisible);
-    webBle?.stop();
   };
 }

@@ -11,10 +11,18 @@
 
 ## 화면
 
-| 경로 | 화면 | 인증 |
-|---|---|---|
-| `#/` | 좌석 현황, 학생 로그인, 예약/취소/착석/퇴실 | 학생 세션 (좌석 현황은 비로그인 조회 가능) |
-| `#/admin` | 좌석 관리(점검 전환, 예약 해제), 이벤트 로그 | 관리자 세션 (학생 세션과 분리) |
+| 경로 | 화면 | 코드 | 인증 |
+|---|---|---|---|
+| `#/kiosk` | **키오스크 모드** 학생 화면: 입구 등 공용 기기용. 개인 기능 없음, 90초 동안 입력이 없으면 자동 로그아웃 | `src/kiosk/` | 학생 세션 (좌석 현황은 비로그인 조회 가능) |
+| `#/personal` | **개인 사용 모드** 학생 화면: 본인 휴대폰·앱용. 블루투스 좌석 자동 연장, 자동 로그아웃 없음 | `src/personal/` | 학생 세션 |
+| `#/admin` | 좌석 관리(점검 전환, 예약 해제, 호수, 배치 편집), 장치, 이벤트 로그 | `src/admin/` | 관리자 세션 (학생 세션과 분리) |
+| `#/` (그 외) | 저장된 모드 → 없으면 기기 기본값(휴대폰 = 개인 사용, 그 외 = 키오스크)으로 이동. 앱(WebView)은 항상 개인 사용 | `src/common/routes.js` | — |
+
+키오스크 · 개인 사용 · 관리자는 **각각 별개의 코드**입니다 (2026-11-13 나눔: 학생 화면은 복제해 두 개로, 관리자는 자기 폴더로).
+각 폴더가 자기 화면 코드 · 부품(components/) · 스타일(style.css)을 가지며, 한쪽을 고쳐도 다른 쪽에 영향이 없습니다.
+여러 화면에 있는 같은 부품의 버그는 해당 폴더들을 모두 고쳐야 합니다 (예: 좌석 배치도는 세 폴더에 각각 있음 —
+관리자 배치 편집 미리보기는 admin/components/seat-map.js). 서버 통신 등 `src/common/` 만 함께 씁니다.
+다른 화면으로 이동하면(모드 전환, 학생 ↔ 관리자) 페이지를 새로 열어 각 화면의 CSS 가 섞이지 않게 합니다.
 
 ## 구조
 
@@ -23,13 +31,18 @@ kiosk/
 ├── index.html
 ├── vite.config.js          /api → 127.0.0.1:8787 프록시 (WebSocket 포함)
 ├── public/                 kgu-logo.png(상단 바 로고), favicon-16/32.png · apple-touch-icon.png(탭 아이콘), _headers
-└── src/
-    ├── main.js             해시 라우터
-    ├── api.js              REST 클라이언트, 학생/관리자 토큰 분리 보관
-    ├── websocket.js        좌석 변경 알림 구독 (자동 재연결)
-    ├── style.css
-    ├── components/         seat-card, seat-map, login-form
-    └── pages/              home(키오스크), admin(관리자)
+├── src/
+│   ├── main.js             해시 라우터 (화면별 코드를 필요할 때만 불러옴)
+│   ├── common/             공용: api.js(REST, 학생/관리자 토큰 분리), websocket.js(좌석 변경 알림),
+│   │                       app-detect.js(앱 감지), usage-mode.js(모드 기본값·저장·전환), routes.js(주소 결정),
+│   │                       test-accounts.js(시연용 테스트 계정 안내)
+│   ├── kiosk/              키오스크 모드: home.js, style.css, components/(seat-card, seat-map, room-tabs,
+│   │                       login-form, central-library, system-status)
+│   ├── personal/           개인 사용 모드: home.js, style.css, components/(위와 같은 목록),
+│   │                       web-ble.js(브라우저 블루투스), app-bridge.js(앱 WebView 연동)
+│   └── admin/              관리자 화면: admin.js, style.css, components/(layout-editor, seat-map, seat-card,
+│                           room-tabs, login-form)
+└── tests/                  npm test (node --test): 모드·주소·블루투스(가짜 Pi)
 ```
 
 ## 실행

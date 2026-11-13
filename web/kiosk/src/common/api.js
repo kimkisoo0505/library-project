@@ -4,7 +4,7 @@
  *   앱 모드(개인 휴대폰)에서는 학생 세션만 localStorage 에 두어 앱을 다시 켜도 로그인이 유지된다.
  * - 응답 성공 전에는 어떤 상태 변경도 성공으로 간주하지 않는다.
  */
-import { IN_APP } from './app-bridge.js';
+import { IN_APP } from './app-detect.js';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/+$/, '');
 

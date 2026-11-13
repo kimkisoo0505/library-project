@@ -68,7 +68,7 @@ RSSI는 **앱(Central)이 측정**합니다. 검색 중에는 광고 패킷 수�
 
 ## 6. 모바일 웹 클라이언트 (Web Bluetooth)
 
-앱이 없는 휴대폰에서도 키오스크 웹(`web/kiosk/src/web-ble.js`)이 브라우저의 Web Bluetooth 로 같은 GATT 서비스에 연결합니다.
+앱이 없는 휴대폰에서도 키오스크 웹(`web/kiosk/src/personal/web-ble.js`, 개인 사용 화면 `#/personal`)이 브라우저의 Web Bluetooth 로 같은 GATT 서비스에 연결합니다.
 
 - 지원: Android 의 Chrome · Edge · 삼성 인터넷 등 (https 필요). iPhone(Safari)·Firefox 는 Web Bluetooth 미지원 → 앱 안내만 표시.
 - **개인 사용 모드에서만** 보입니다. 화면 상단의 [개인 사용 | 키오스크] 토글로 고르며, 휴대폰은 개인 사용, PC·입구 기기는 키오스크가 기본입니다(선택은 기기에 기억). 키오스크 모드로 바꾸면 연결을 바로 끊습니다. 앱(WebView)은 항상 개인 사용이고 토글이 없습니다.

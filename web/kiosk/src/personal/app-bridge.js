@@ -9,7 +9,9 @@
  *  - 앱 → 웹: 블루투스 상태 (Pi 연결 여부, 신호 세기, 기준값 이상인지)
  *  - 재실 확인 API 는 웹이 자기 학생 세션으로 직접 호출한다.
  */
-export const IN_APP = /\bLibrarySeatApp\/\S+/.test(navigator.userAgent);
+import { IN_APP } from '../common/app-detect.js';
+
+export { IN_APP }; // 앱 감지는 공용(common/app-detect.js)에 있다
 
 /** 블루투스 재실 확인 장치가 있는 열람실 (서버 PRESENCE_ROOMS 와 같게 유지) */
 export const PRESENCE_ROOMS = Object.freeze(['A']);

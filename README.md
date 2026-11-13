@@ -369,7 +369,7 @@ Cloudflare가 데이터베이스의 최근 7일 상태를 자동으로 보관해
 | 현장 에이전트 (열람실 A) | [raspberry-pi](raspberry-pi) | Python 3.13 (asyncio, httpx, websockets, smbus2), Raspberry Pi 3 B+, Grove LCD RGB Backlight |
 | 하드웨어 컨트롤러 (열람실 B, C 예정) | [arduino](arduino) | Arduino UNO R3 + I2C LCD — `room_lcd` 펌웨어, 라즈베리파이가 USB 시리얼로 제어 |
 | 모바일 앱 (Android) | [mobile-app](mobile-app) | Flutter — 키오스크 웹(WebView) + BLE 재실 확인 |
-| 휴대폰 브라우저 재실 확인 | [web/kiosk/src/web-ble.js](web/kiosk/src/web-ble.js) | Web Bluetooth (앱과 같은 GATT 규격, [BLE_GATT_SPEC.md](docs/BLE_GATT_SPEC.md)) |
+| 휴대폰 브라우저 재실 확인 | [web/kiosk/src/personal/web-ble.js](web/kiosk/src/personal/web-ble.js) | Web Bluetooth (앱과 같은 GATT 규격, [BLE_GATT_SPEC.md](docs/BLE_GATT_SPEC.md)) |
 | 자동 배포 | [.github/workflows](.github/workflows) | GitHub Actions (검사 → D1 마이그레이션 → 배포) |
 
 **좌석 상태의 최종 기준은 D1** 입니다. 예약은 부분 UNIQUE 인덱스 + 조건부 `INSERT … SELECT … WHERE` 로 원자적으로 처리하며,

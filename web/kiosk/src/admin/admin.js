@@ -1,10 +1,17 @@
-import { api, ApiError, session } from '../api.js';
-import { SeatSocket } from '../websocket.js';
-import { createLoginForm } from '../components/login-form.js';
-import { STATE_LABELS } from '../components/seat-card.js';
-import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
-import { TEST_ADMIN } from '../test-accounts.js';
-import { createLayoutEditor } from '../components/layout-editor.js';
+/**
+ * 관리자 화면 (#/admin) — 좌석 관리, 강의실 호수, 좌석 배치 편집, 현장 장치, 이벤트 로그.
+ *
+ * 키오스크(src/kiosk/) · 개인 사용(src/personal/) 화면과 별개의 코드다. 부품(components/)과 스타일(style.css)도
+ * 이 폴더의 것만 쓴다. 서버 통신 등 src/common/ 만 함께 쓴다. 관리자 세션은 학생 세션과 분리되어 있다.
+ */
+import './style.css';
+import { api, ApiError, session } from '../common/api.js';
+import { SeatSocket } from '../common/websocket.js';
+import { createLoginForm } from './components/login-form.js';
+import { STATE_LABELS } from './components/seat-card.js';
+import { createRoomTabs, roomPreference } from './components/room-tabs.js';
+import { TEST_ADMIN } from '../common/test-accounts.js';
+import { createLayoutEditor } from './components/layout-editor.js';
 
 const ROOM_PREF_KEY = 'library.admin.room';
 
