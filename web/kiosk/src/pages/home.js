@@ -9,6 +9,7 @@ import { createCentralLibraryPanel, congestionLevel, createLevelPill } from '../
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from '../components/system-status.js';
 import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from '../app-bridge.js';
 import { createWebBlePresence, webBleSupport } from '../web-ble.js';
+import { MODES, MODE_LABELS, loadMode, saveMode } from '../usage-mode.js';
 
 /** 앱 모드: 재실 확인을 서버에 보내는 최소 간격 (서버는 남은 시간을 2시간으로 유지) */
 const PRESENCE_REPORT_MS = 60_000;
@@ -103,7 +104,32 @@ export function renderHome(root) {
   brand.append(el('small', null, '열람실 A·B·C 실시간 현황'));
   const liveBadge = el('span', 'live is-offline', '연결 중');
   const userBox = el('div', 'user-box');
-  header.append(logo, brand, liveBadge, userBox);
+
+  // 사용 모드 토글 (개인 사용 / 키오스크). 개인 특화 기능은 개인 사용 모드에서만 보인다. 앱은 항상 개인 사용.
+  let usageMode = loadMode({ inApp: IN_APP });
+  const modeToggle = el('div', 'mode-toggle');
+  modeToggle.setAttribute('role', 'radiogroup');
+  modeToggle.setAttribute('aria-label', '사용 모드');
+  modeToggle.hidden = IN_APP;
+  const modeButtons = {};
+  for (const mode of MODES) {
+    const b = el('button', null, MODE_LABELS[mode]);
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.title = mode === 'personal' ? '본인 휴대폰: 블루투스 자동 연장 등 개인 기능 사용' : '입구의 공용 기기: 개인 기능 숨김';
+    b.addEventListener('click', () => setUsageMode(mode));
+    modeButtons[mode] = b;
+    modeToggle.append(b);
+  }
+  function renderModeToggle() {
+    for (const [mode, b] of Object.entries(modeButtons)) {
+      b.classList.toggle('on', mode === usageMode);
+      b.setAttribute('aria-checked', String(mode === usageMode));
+    }
+    document.body.classList.toggle('mode-kiosk', usageMode === 'kiosk');
+  }
+  renderModeToggle();
+  header.append(logo, brand, modeToggle, liveBadge, userBox);
 
   // 알림 메시지 (토스트)
   const message = el('div', 'toast');
@@ -472,7 +498,8 @@ export function renderHome(root) {
   function syncWebBle() {
     if (!webBle) return;
     const mine = mySeat();
-    const wanted = Boolean(state.user && mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room));
+    const wanted = usageMode === 'personal'
+      && Boolean(state.user && mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room));
     if (!wanted) {
       if (webBle.active || state.appPresence) { webBle.stop(); state.appPresence = null; }
       return;
@@ -481,6 +508,19 @@ export function renderHome(root) {
       webBleResumeTried = true;
       webBle.resume(); // 이미 허락한 기기면 선택 창 없이 다시 연결 (지원 브라우저만)
     }
+  }
+
+  function setUsageMode(mode) {
+    if (IN_APP || mode === usageMode || !MODES.includes(mode)) return;
+    usageMode = mode;
+    saveMode(mode);
+    renderModeToggle();
+    syncWebBle();      // 키오스크 모드로 바꾸면 블루투스 연결을 바로 끊는다
+    renderHero();
+    resetIdleTimer();
+    showMessage(mode === 'personal'
+      ? '개인 사용 모드: 본인 휴대폰에서 블루투스 자동 연장 등 개인 기능을 쓸 수 있어요. 자동 로그아웃되지 않아요.'
+      : '키오스크 모드: 여러 사람이 쓰는 기기용 화면이에요. 개인 기능은 숨겨지고, 사용하지 않으면 자동 로그아웃돼요.', 'info');
   }
 
   function webPresenceBox() {
@@ -515,6 +555,7 @@ export function renderHome(root) {
   function presenceChip(mine) {
     if (!PRESENCE_ROOMS.includes(mine.room)) return null;
     if (!IN_APP) {
+      if (usageMode !== 'personal') return null; // 키오스크 모드: 개인 특화 기능 숨김
       if (webBle) return webPresenceBox();
       const why = WEB_BLE_SUPPORT === 'insecure' ? '' : ' (이 브라우저는 블루투스를 지원하지 않아요 · Android Chrome 에서 가능)';
       return el('span', 'chip-glass', `📱 모바일 앱을 켜 두면 자리에 있는 동안 자동 연장돼요${why}`);
@@ -920,6 +961,7 @@ export function renderHome(root) {
   function resetIdleTimer() {
     clearTimeout(idleTimer);
     if (!state.user || IN_APP) return; // 앱(개인 휴대폰)에서는 자동 로그아웃하지 않음
+    if (usageMode === 'personal') return; // 개인 사용 모드(본인 휴대폰)에서는 자동 로그아웃하지 않음. 키오스크 모드만 적용
     // 웹 블루투스 재실 확인을 켠 동안은 본인 휴대폰에서 쓰는 중이므로 자동 로그아웃하지 않는다 (끄면 다시 적용)
     if (webBle?.active) return;
     idleTimer = setTimeout(() => {
