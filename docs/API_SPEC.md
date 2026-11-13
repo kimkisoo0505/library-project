@@ -64,7 +64,8 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 ```json
 {
   "rooms": [
-    { "code": "A", "name": "열람실 A", "location": "00관 000호", "total": 30, "available": 28 },
+    { "code": "A", "name": "열람실 A", "location": "00관 000호", "total": 30, "available": 28, "layout_version": 3,
+      "layout": { "rows": 6, "cols": 8, "custom": true, "seats": [ { "seat_no": 1, "row": 1, "col": 0 } ], "fixtures": [ { "type": "board", "row": 0, "col": 1, "w": 5, "h": 1 } ] } },
     { "code": "B", "name": "열람실 B", "location": "", "total": 30, "available": 30 },
     { "code": "C", "name": "열람실 C", "location": "", "total": 30, "available": 30 }
   ],
@@ -136,6 +137,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 |---|---|---|
 | GET | `/admin/seats?room=A` | 열람실 요약 + 좌석 + 활성 예약 상세 (`room` 생략 시 전체) |
 | POST | `/admin/seats/:id/status` | `{ "status": "maintenance" \| "available", "reason": "..." }` 활성 예약이 있으면 `409 seat_in_use` |
+| POST | `/admin/rooms/:code/layout` | 좌석 배치 저장 `{ "version": <편집 시작 시 layout_version>, "layout": {...} \| null }` (`null` = 기본 배치로). 배치: `rows`·`cols` 3~15, `seats` = 열람실의 모든 좌석 `{ seat_no, row, col }` 정확히 한 번씩(위치만, 좌석 수·번호는 불변), `fixtures` = `{ type: door\|board\|window, row, col, w, h }` 최대 12개. row/col 은 0부터. 형식·범위·누락 `400 invalid_layout`, 겹침 `400 layout_overlap`, 다른 관리자가 먼저 저장 `409 layout_conflict`. 이벤트 `room.layout_changed` 기록 후 `seats.changed` 알림. 관리자 `GET /admin/seats` 의 `rooms[]` 에는 `default_layout` 도 포함 |
 | POST | `/admin/rooms/:code/location` | 강의실 위치(호수) 저장 `{ "location": "00관 000호" }` — 앞뒤 공백 제거, 최대 40자, 빈 문자열이면 지움. `<`, `>`, 제어 문자는 `400 invalid_parameter`. 없는 열람실 `404 room_not_found`. 이벤트 `room.location_changed` 기록 후 `seats.changed` 알림 |
 | POST | `/admin/reservations/:id/release` | 활성 예약 강제 해제 `{ "reason": "..." }` (사유 필수) |
 | GET | `/admin/events?limit=50&before_id=` | 이벤트 로그 최신순 (limit 1~200) |

@@ -111,6 +111,8 @@ export const api = {
   adminListSeats: () => request('/admin/seats', { auth: 'admin' }),
   adminSetRoomLocation: (roomCode, location) =>
     request(`/admin/rooms/${encodeURIComponent(roomCode)}/location`, { method: 'POST', auth: 'admin', body: { location } }),
+  adminSaveRoomLayout: (roomCode, body) =>
+    request(`/admin/rooms/${encodeURIComponent(roomCode)}/layout`, { method: 'POST', auth: 'admin', body }),
   adminSetSeatStatus: (seatId, status, reason = '') =>
     request(`/admin/seats/${encodeURIComponent(seatId)}/status`, { method: 'POST', auth: 'admin', body: { status, reason } }),
   adminReleaseReservation: (id, reason) =>

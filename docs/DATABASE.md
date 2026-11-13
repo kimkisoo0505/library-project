@@ -48,6 +48,8 @@ events (seat_id, reservation_id, actor_* 로 느슨하게 참조)
 | name | `열람실 A` 등 화면 표시 이름 |
 | sort_order | 표시 순서 |
 | location | 강의실 위치(호수), 예: `00관 000호`. 관리자가 입력, 빈 문자열 = 미입력, 최대 40자 (0006_room_location) |
+| layout | 좌석 배치 JSON (0007_room_layout). `NULL` = 기본 배치(3석 + 통로 + 3석). 줄·칸 수, 좌석별 위치, 출입구·칠판·창가 블록. 형식 검증은 `workers/layout.js` |
+| layout_version | 배치를 저장할 때마다 1 증가. 저장은 편집을 시작한 버전과 같을 때만 반영 (`UPDATE … WHERE layout_version = ?`, 동시 편집 덮어쓰기 방지) |
 
 ### seats — 좌석 (3실 × 30석 = 90석)
 | 컬럼 | 설명 |

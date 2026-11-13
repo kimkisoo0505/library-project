@@ -5,6 +5,7 @@
  */
 import { Router, json, errorResponse } from './router.js';
 import { handleStudentLogin, handleAdminLogin, handleLogout, handleMe } from './auth.js';
+import { handleAdminSetRoomLayout } from './layout.js';
 import { handleListSeats, handleAdminListSeats, handleAdminSetSeatStatus, handleAdminSetRoomLocation, handleWebSocket } from './seats.js';
 import {
   handleCreateReservation,
@@ -51,6 +52,7 @@ const router = new Router()
   .get('/api/admin/seats', handleAdminListSeats)
   .post('/api/admin/seats/:id/status', handleAdminSetSeatStatus)
   .post('/api/admin/rooms/:code/location', handleAdminSetRoomLocation)
+  .post('/api/admin/rooms/:code/layout', handleAdminSetRoomLayout)
   .post('/api/admin/reservations/:id/release', handleAdminReleaseReservation)
   .get('/api/admin/events', handleAdminEvents)
   .post('/api/admin/devices/:room/shutdown', handleAdminDeviceShutdown)

@@ -44,7 +44,10 @@ CREATE TABLE IF NOT EXISTS rooms (
     sort_order      INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- 0006_room_location: 강의실 위치(호수), 관리자가 입력. 빈 문자열 = 미입력
-    location        TEXT    NOT NULL DEFAULT '' CHECK (length(location) <= 40)
+    location        TEXT    NOT NULL DEFAULT '' CHECK (length(location) <= 40),
+    -- 0007_room_layout: 좌석 배치 JSON (NULL = 기본 배치), 저장할 때마다 증가하는 버전
+    layout          TEXT    CHECK (layout IS NULL OR length(layout) <= 8000),
+    layout_version  INTEGER NOT NULL DEFAULT 0
 );
 
 -- 좌석 (열람실별 30석, 전체 90석). id 는 전체에서 고유: A=1~30, B=31~60, C=61~90

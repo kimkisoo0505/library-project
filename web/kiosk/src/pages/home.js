@@ -304,7 +304,7 @@ export function renderHome(root) {
 
   function renderMap() {
     roomTabs.update(state.rooms, state.room);
-    seatMap.update(seatsInRoom());
+    seatMap.update(seatsInRoom(), state.rooms.find((r) => r.code === state.room)?.layout ?? null); // 관리자가 저장한 배치
     seatMap.setSelected(state.selectedSeatId);
     renderRoomHead();
     renderCentralExtras();

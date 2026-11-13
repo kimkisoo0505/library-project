@@ -8,6 +8,7 @@
  */
 import { HttpError, json, readJson, nowIso, logEvent, parsePositiveInt } from './router.js';
 import { authenticate, requireAdmin, requireDevice } from './auth.js';
+import { resolveLayout, defaultLayout } from './layout.js';
 
 // 실시간 알림 허브(Durable Object) 이름. 모든 열람실이 하나의 허브를 공유한다.
 export const SEAT_ROOM_NAME = 'reading-room-1';
@@ -33,6 +34,7 @@ async function querySeats(env) {
   const { results } = await env.DB.prepare(
     `SELECT s.id, s.label, s.seat_no, s.status AS seat_status, s.updated_at,
             rm.code AS room_code, rm.name AS room_name, rm.sort_order AS room_order, rm.location AS room_location,
+            rm.layout AS room_layout, rm.layout_version AS room_layout_version,
             r.id AS reservation_id, r.student_id, r.status AS reservation_status,
             r.reserved_at, r.expires_at, r.checked_in_at, r.usage_hours, r.usage_ends_at
        FROM seats s
@@ -44,16 +46,33 @@ async function querySeats(env) {
   return results;
 }
 
-/** 열람실별 요약 (전체 좌석 기준) */
-function summarizeRooms(rows) {
+/** 열람실별 요약 (전체 좌석 기준). 좌석 배치(layout)도 함께 담는다. */
+function summarizeRooms(rows, { includeDefaultLayout = false } = {}) {
   const rooms = new Map();
+  const seatNos = new Map();
+  const storedLayout = new Map();
   for (const row of rows) {
     if (!rooms.has(row.room_code)) {
-      rooms.set(row.room_code, { code: row.room_code, name: row.room_name, location: row.room_location ?? '', total: 0, available: 0 });
+      rooms.set(row.room_code, {
+        code: row.room_code,
+        name: row.room_name,
+        location: row.room_location ?? '',
+        total: 0,
+        available: 0,
+        layout_version: row.room_layout_version ?? 0,
+      });
+      seatNos.set(row.room_code, []);
+      storedLayout.set(row.room_code, row.room_layout ?? null);
     }
     const room = rooms.get(row.room_code);
     room.total += 1;
     if (seatState(row) === 'available') room.available += 1;
+    seatNos.get(row.room_code).push(row.seat_no);
+  }
+  for (const room of rooms.values()) {
+    const nos = seatNos.get(room.code);
+    room.layout = resolveLayout(storedLayout.get(room.code), nos);
+    if (includeDefaultLayout) room.default_layout = defaultLayout(nos);
   }
   return [...rooms.values()];
 }
@@ -116,7 +135,7 @@ export async function handleAdminListSeats(ctx) {
   const roomCode = parseRoomCode(ctx.url);
   const rows = await querySeats(ctx.env);
   return json({
-    rooms: summarizeRooms(rows),
+    rooms: summarizeRooms(rows, { includeDefaultLayout: true }),
     seats: filterRoom(rows, roomCode).map((row) => ({
       id: row.id,
       room: row.room_code,

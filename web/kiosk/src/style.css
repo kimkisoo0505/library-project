@@ -413,3 +413,44 @@ h2 { font-size: 1.1rem; }
 }
 .hero .chip-glass.presence-ok { background: rgba(120, 220, 150, 0.28); }
 .hero .chip-glass.presence-weak, .hero .chip-glass.presence-off { background: rgba(255, 180, 120, 0.28); }
+
+/* =========================================================
+   좌석 배치 (관리자가 저장한 배치) — 학생 화면 · 관리자 미리보기 공용
+   ========================================================= */
+.fixture {
+  display: grid; place-items: center; min-width: 0; overflow: hidden; padding: 2px;
+  border-radius: 8px; font-size: 11px; font-weight: 600; color: var(--sub); text-align: center; line-height: 1.2;
+  background: var(--bg);
+}
+.fixture-door { background: #fff4e6; color: #c2410c; }
+.fixture-window { background: #e7f5ff; color: #1c7ed6; }
+.fixture.is-tall { writing-mode: vertical-rl; letter-spacing: 2px; }
+.seat-map.is-dense .seat-label { font-size: 10px; }
+.seat-map.is-dense .seat-card { min-height: 38px; padding: 2px; }
+
+/* =========================================================
+   관리자: 좌석 배치 편집기
+   ========================================================= */
+.layout-editor { margin: 4px 0 18px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card); }
+.le-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.le-title { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.le-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.layout-editor .room-frame { max-width: 440px; }
+.le-tools { display: grid; gap: 8px; margin-bottom: 12px; }
+.le-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.le-row .btn { min-height: 34px; padding: 4px 10px; font-size: 13px; }
+.le-row .le-sq { width: 34px; padding: 0; font-size: 18px; }
+.le-label { font-size: 13px; font-weight: 600; color: var(--ink2); margin-right: 4px; }
+.le-label.hint { font-weight: 400; color: var(--sub); }
+.le-scroll { overflow: auto; padding: 4px; max-width: 100%; }
+.le-grid { display: grid; gap: 4px; position: relative; width: max-content; user-select: none; -webkit-user-select: none; }
+.le-cell { border: 1.5px dashed var(--line); border-radius: 8px; background: #fafbfc; }
+.le-item { position: relative; z-index: 1; cursor: grab; touch-action: none; transition: box-shadow 0.1s; }
+.le-item:focus-visible { outline: 3px solid var(--kg); outline-offset: 1px; }
+.le-item.is-selected { box-shadow: 0 0 0 3px var(--ink); }
+.le-item.is-dragging { z-index: 5; cursor: grabbing; opacity: 0.85; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); transition: none; }
+.le-seat { display: grid; place-items: center; border-radius: 9px; font-size: 12px; font-weight: 700; }
+.le-target { z-index: 4; border-radius: 9px; pointer-events: none; }
+.le-target.is-ok { box-shadow: inset 0 0 0 3px var(--ok); background: rgba(18, 184, 134, 0.12); }
+.le-target.is-swap { box-shadow: inset 0 0 0 3px var(--av); background: rgba(49, 130, 246, 0.12); }
+.le-target.is-bad { box-shadow: inset 0 0 0 3px var(--bad); background: rgba(240, 68, 82, 0.1); }

@@ -4,6 +4,7 @@ import { createLoginForm } from '../components/login-form.js';
 import { STATE_LABELS } from '../components/seat-card.js';
 import { createRoomTabs, roomPreference } from '../components/room-tabs.js';
 import { TEST_ADMIN } from '../test-accounts.js';
+import { createLayoutEditor } from '../components/layout-editor.js';
 
 const ROOM_PREF_KEY = 'library.admin.room';
 
@@ -25,6 +26,10 @@ export function renderAdmin(root) {
   const state = { admin: null, rooms: [], seats: [], events: [], devices: [], busy: false, room: roomPreference.load(ROOM_PREF_KEY) || 'A' };
   const roomTabs = createRoomTabs({
     onSelect: (code) => {
+      // 배치 편집 중 저장하지 않은 변경이 있으면 확인 후 이동
+      if (code !== state.room && layoutEditor.hasChanges()
+        && !window.confirm('저장하지 않은 좌석 배치 변경이 있습니다. 버리고 다른 열람실로 이동할까요?')) return;
+      if (code !== state.room) layoutEditor.cancel();
       state.room = code;
       roomPreference.save(ROOM_PREF_KEY, code);
       render();
@@ -69,7 +74,19 @@ export function renderAdmin(root) {
     }
   }
 
+  // 좌석 배치 편집기 (드래그 중에는 화면을 다시 그리지 않도록 새로고침을 미룬다)
+  let refreshPending = false;
+  const layoutEditor = createLayoutEditor({
+    onSave: (code, body) => runAction(
+      () => api.adminSaveRoomLayout(code, body),
+      `${state.rooms.find((r) => r.code === code)?.name ?? code} 좌석 배치를 저장했습니다. 학생 화면에 바로 반영됩니다.`,
+    ),
+    onMessage: (text, kind = 'info') => showMessage(text, kind),
+    onDragEnd: () => { if (refreshPending) { refreshPending = false; refresh(); } },
+  });
+
   async function refresh() {
+    if (layoutEditor.isDragging()) { refreshPending = true; return; }
     if (!state.admin) { render(); return; }
     try {
       const [seats, events, status] = await Promise.all([
@@ -88,12 +105,15 @@ export function renderAdmin(root) {
     render();
   }
 
+  /** @returns {Promise<boolean>} 서버가 성공 처리했는지 */
   async function runAction(action, successText) {
-    if (state.busy) return;
+    if (state.busy) return false;
     state.busy = true;
     render();
+    let ok = false;
     try {
       await action();
+      ok = true;
       showMessage(successText, 'success');
     } catch (err) {
       await handleError(err);
@@ -101,6 +121,7 @@ export function renderAdmin(root) {
       state.busy = false;
       await refresh();
     }
+    return ok;
   }
 
   function button(text, className, onClick) {
@@ -292,7 +313,8 @@ export function renderAdmin(root) {
 
     const seatSection = el('section', 'card');
     roomTabs.update(state.rooms, state.room);
-    seatSection.append(el('h2', null, '좌석 관리'), roomTabs.element, renderLocationForm(), renderSeatTable());
+    layoutEditor.update(state.rooms.find((r) => r.code === state.room) ?? null, state.seats.filter((s) => s.room === state.room));
+    seatSection.append(el('h2', null, '좌석 관리'), roomTabs.element, renderLocationForm(), layoutEditor.element, renderSeatTable());
     const deviceSection = el('section', 'card');
     deviceSection.append(el('h2', null, '현장 장치'), renderDevices());
     const eventSection = el('section', 'card');
