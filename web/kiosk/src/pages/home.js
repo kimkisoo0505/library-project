@@ -8,6 +8,7 @@ import { TEST_STUDENTS } from '../test-accounts.js';
 import { createCentralLibraryPanel, congestionLevel, createLevelPill } from '../components/central-library.js';
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from '../components/system-status.js';
 import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from '../app-bridge.js';
+import { createWebBlePresence, webBleSupport } from '../web-ble.js';
 
 /** 앱 모드: 재실 확인을 서버에 보내는 최소 간격 (서버는 남은 시간을 2시간으로 유지) */
 const PRESENCE_REPORT_MS = 60_000;
@@ -405,6 +406,7 @@ export function renderHome(root) {
     renderSheet();
     renderMe();
     notifyApp();
+    syncWebBle();
   }
 
   // ----- 앱 모드: 블루투스 재실 확인 -----
@@ -451,10 +453,72 @@ export function renderHome(root) {
     });
   }
 
+  // ----- 모바일 웹: 브라우저 블루투스(Web Bluetooth)로 재실 확인 -----
+  // 앱이 아닐 때만. 앱과 같은 상태 모양을 state.appPresence 에 넣어 같은 보고 경로(maybeReportPresence)를 쓴다.
+  const WEB_BLE_SUPPORT = IN_APP ? 'app' : webBleSupport();
+  const webBle = WEB_BLE_SUPPORT === 'ok'
+    ? createWebBlePresence({
+      onChange: (p) => {
+        state.appPresence = p.status === 'idle' ? null : p;
+        renderHero();
+        resetIdleTimer();
+        maybeReportPresence();
+      },
+    })
+    : null;
+  let webBleResumeTried = false;
+
+  /** 열람실 A 에서 이용 중일 때만 블루투스를 유지한다. 퇴실·로그아웃하면 끊는다. */
+  function syncWebBle() {
+    if (!webBle) return;
+    const mine = mySeat();
+    const wanted = Boolean(state.user && mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room));
+    if (!wanted) {
+      if (webBle.active || state.appPresence) { webBle.stop(); state.appPresence = null; }
+      return;
+    }
+    if (!webBleResumeTried) {
+      webBleResumeTried = true;
+      webBle.resume(); // 이미 허락한 기기면 선택 창 없이 다시 연결 (지원 브라우저만)
+    }
+  }
+
+  function webPresenceBox() {
+    const p = state.appPresence;
+    const box = el('div', 'presence-web');
+    const on = (text, cls = '') => box.append(el('span', `chip-glass ${cls}`.trim(), text));
+    const btn = (text, onClick, cls = 'presence-btn') => {
+      const b = el('button', cls, text);
+      b.type = 'button';
+      b.addEventListener('click', onClick);
+      box.append(b);
+    };
+    const status = p?.status ?? 'idle';
+    if (status === 'connected' && p.inRange) {
+      on('📶 블루투스로 자리 확인됨 · 남은 시간이 2시간 아래로 줄지 않아요', 'presence-ok');
+      btn('끄기', () => webBle.stop(), 'presence-btn presence-btn-ghost');
+    } else if (status === 'connected') {
+      on('📶 열람실 장치 응답 확인 중…', 'presence-weak');
+    } else if (status === 'choosing' || status === 'connecting') {
+      on('📶 열람실 장치에 연결하는 중…');
+    } else if (status === 'reconnecting') {
+      on(`📶 ${p.reason || '다시 연결하는 중'} · 시간이 줄어들고 있어요`, 'presence-weak');
+    } else {
+      on(p?.reason ? `📵 ${p.reason}` : '📵 블루투스로 자리를 확인하면 자리에 있는 동안 자동 연장돼요', 'presence-off');
+      btn('블루투스로 자리 확인 켜기', () => webBle.start());
+    }
+    box.append(el('span', 'presence-note', '화면을 켜 둔 동안 동작해요 · 열람실 장치(LIB-SEAT-PI)를 선택하세요'));
+    return box;
+  }
+
   /** 상태 카드 안의 재실 확인 안내 (열람실 A 이용 중일 때만) */
   function presenceChip(mine) {
     if (!PRESENCE_ROOMS.includes(mine.room)) return null;
-    if (!IN_APP) return el('span', 'chip-glass', '📱 모바일 앱을 켜 두면 자리에 있는 동안 자동 연장돼요');
+    if (!IN_APP) {
+      if (webBle) return webPresenceBox();
+      const why = WEB_BLE_SUPPORT === 'insecure' ? '' : ' (이 브라우저는 블루투스를 지원하지 않아요 · Android Chrome 에서 가능)';
+      return el('span', 'chip-glass', `📱 모바일 앱을 켜 두면 자리에 있는 동안 자동 연장돼요${why}`);
+    }
     const p = state.appPresence;
     if (!p) return el('span', 'chip-glass', '📶 블루투스 확인 준비 중…');
     if (p.inRange) return el('span', 'chip-glass presence-ok', `📶 자리 확인됨${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 남은 시간이 2시간 아래로 줄지 않아요`);
@@ -856,6 +920,8 @@ export function renderHome(root) {
   function resetIdleTimer() {
     clearTimeout(idleTimer);
     if (!state.user || IN_APP) return; // 앱(개인 휴대폰)에서는 자동 로그아웃하지 않음
+    // 웹 블루투스 재실 확인을 켠 동안은 본인 휴대폰에서 쓰는 중이므로 자동 로그아웃하지 않는다 (끄면 다시 적용)
+    if (webBle?.active) return;
     idleTimer = setTimeout(() => {
       showMessage('일정 시간 사용하지 않아 자동 로그아웃되었습니다.', 'info');
       logout(true);
@@ -868,6 +934,9 @@ export function renderHome(root) {
   document.addEventListener('keydown', onKeydown);
   const onScroll = () => header.classList.toggle('scrolled', window.scrollY > 4);
   window.addEventListener('scroll', onScroll, { passive: true });
+  // 화면으로 돌아오면 블루투스 확인을 바로 한 번
+  const onVisible = () => { if (!document.hidden) webBle?.pingNow(); };
+  document.addEventListener('visibilitychange', onVisible);
 
   // ----- 실시간 갱신 -----
   const socket = new SeatSocket({
@@ -903,5 +972,7 @@ export function renderHome(root) {
     activityEvents.forEach((name) => document.removeEventListener(name, resetIdleTimer));
     document.removeEventListener('keydown', onKeydown);
     window.removeEventListener('scroll', onScroll);
+    document.removeEventListener('visibilitychange', onVisible);
+    webBle?.stop();
   };
 }
