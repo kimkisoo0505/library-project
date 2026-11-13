@@ -110,8 +110,8 @@ export function renderHome(root) {
   message.setAttribute('aria-live', 'polite');
 
   // ----- 좌석 탭 -----
-  const seatsView = el('main', 'view page');
-  const hero = el('section');
+  const seatsView = el('main', 'view page view-seats');
+  const hero = el('section', 'hero-slot');
   hero.setAttribute('aria-label', '내 이용 상태');
 
   const seatMap = createSeatMap({ onSelect: selectSeat });
@@ -147,7 +147,7 @@ export function renderHome(root) {
   seatsView.append(hero, mapSection, miniCard, ...(systemStatus ? [systemStatus.element] : []), footer);
 
   // ----- 중앙도서관 탭 -----
-  const centralView = el('main', 'view page');
+  const centralView = el('main', 'view page view-central');
   centralView.hidden = true;
   const centralHead = el('div');
   centralHead.append(el('div', 'sec-title', '중앙도서관 혼잡도'), el('div', 'sec-sub', '경기대 도서관 좌석 현황을 1분마다 받아와요'));
@@ -161,7 +161,7 @@ export function renderHome(root) {
   centralView.append(centralHead, tip, centralLibrary.element);
 
   // ----- 내 이용 탭 -----
-  const meView = el('main', 'view page');
+  const meView = el('main', 'view page view-me');
   meView.hidden = true;
   const meHead = el('div');
   const meSub = el('div', 'sec-sub');
