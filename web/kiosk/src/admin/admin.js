@@ -12,6 +12,7 @@ import { STATE_LABELS } from './components/seat-card.js';
 import { createRoomTabs, roomPreference } from './components/room-tabs.js';
 import { TEST_ADMIN } from '../common/test-accounts.js';
 import { createLayoutEditor } from './components/layout-editor.js';
+import { createLocationPicker } from './components/location-picker.js';
 
 const ROOM_PREF_KEY = 'library.admin.room';
 
@@ -139,39 +140,52 @@ export function renderAdmin(root) {
     return b;
   }
 
-  // ----- 강의실 위치(호수) 입력: 학생 화면의 열람실 이름 자리에 표시된다 -----
-  // 입력란은 한 번만 만들어 두어, 실시간 갱신으로 다시 그려져도 입력 중인 글자가 지워지지 않게 한다.
-  const locationInput = el('input', 'location-input');
-  locationInput.type = 'text';
-  locationInput.maxLength = 40;
-  locationInput.placeholder = '예: 00관 000호';
-  locationInput.id = 'room-location';
+  // ----- 강의실 위치: 건물 목록 + 호실 숫자 키패드. 학생 화면의 열람실 이름 자리에 "5강의동 4405호" 로 표시된다 -----
+  // 선택 칸은 한 번만 만들어 두어, 실시간 갱신으로 다시 그려져도 고르는 중인 값이 지워지지 않게 한다.
   let locationRoom = null;
-  let locationDirty = false;
-  locationInput.addEventListener('input', () => { locationDirty = true; });
+  const locationSave = el('button', 'btn btn-primary', '저장');
+  locationSave.type = 'submit';
+  const locationPicker = createLocationPicker({
+    onChange: () => { locationSave.disabled = state.busy || !locationPicker.getValue(); },
+  });
 
   function renderLocationForm() {
     const room = state.rooms.find((r) => r.code === state.room);
-    if (locationRoom !== state.room || !locationDirty) {
-      locationInput.value = room?.location ?? '';
+    if (locationRoom !== state.room || !locationPicker.isDirty()) {
+      locationPicker.setValue(room?.location ?? '');
       locationRoom = state.room;
-      locationDirty = false;
     }
     const form = el('form', 'location-form');
-    const label = el('label', null, `${room?.name ?? state.room} 강의실 위치 (호수)`);
-    label.htmlFor = 'room-location';
-    const save = el('button', 'btn btn-primary', '저장');
-    save.type = 'submit';
-    save.disabled = state.busy;
-    form.append(label, locationInput, save, el('p', 'hint', '학생 화면의 좌석 배치도 위에 표시됩니다. 비워 두고 저장하면 열람실 이름이 표시됩니다.'));
+    const title = el('div', 'location-title', `${room?.name ?? state.room} 강의실 위치`);
+    const current = el('span', 'location-current', room?.location ? `현재: ${room.location}` : '현재: 미입력 (열람실 이름이 표시됨)');
+    title.append(current);
+    locationSave.disabled = state.busy || !locationPicker.getValue();
+    locationPicker.setDisabled(state.busy);
+    const clear = el('button', 'btn btn-ghost', '위치 비우기');
+    clear.type = 'button';
+    clear.disabled = state.busy || !room?.location;
+    clear.addEventListener('click', () => {
+      if (!window.confirm(`${room?.name ?? state.room} 의 강의실 위치를 비울까요? 학생 화면에는 열람실 이름이 표시됩니다.`)) return;
+      const code = state.room;
+      runAction(async () => {
+        await api.adminSetRoomLocation(code, '');
+        locationPicker.markSaved();
+        locationRoom = null; // 서버 값으로 다시 채움
+      }, `${room?.name ?? code} 위치를 비웠습니다.`);
+    });
+    const actions = el('div', 'location-actions');
+    actions.append(locationSave, clear);
+    form.append(title, locationPicker.element, actions);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const code = state.room;
-      const value = locationInput.value;
+      const value = locationPicker.getValue();
+      if (!value) { showMessage('건물과 호실을 모두 골라 주세요.', 'error'); return; }
       runAction(async () => {
         await api.adminSetRoomLocation(code, value);
-        locationDirty = false;
-      }, `${room?.name ?? code} 위치를 저장했습니다.`);
+        locationPicker.markSaved();
+        locationRoom = null; // 서버 값으로 다시 채움
+      }, `${room?.name ?? code} 위치를 "${value}"(으)로 저장했습니다.`);
     });
     return form;
   }

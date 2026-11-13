@@ -131,12 +131,40 @@ h2 { font-size: 1.1rem; }
 .room-head .cnt { font-size: 13px; color: var(--sub); }
 .room-head .cnt b { color: var(--av); font-size: 15px; }
 .room-head .cnt b.full { color: var(--bad); }
-/* 관리자: 강의실 위치(호수) 입력 */
-.location-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
-.location-form label { width: 100%; font-size: 13px; font-weight: 600; color: var(--sub); }
-.location-input { flex: 1; min-width: 180px; max-width: 320px; font: inherit; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--r-sm); outline: none; }
-.location-input:focus { border-color: var(--kg); }
-.location-form .hint { width: 100%; margin: 0; font-size: 12px; }
+/* 관리자: 강의실 위치 (건물 목록 + 호실 숫자 키패드) */
+.location-form { display: flex; flex-direction: column; gap: 10px; margin: 0 0 14px; max-width: 560px; }
+.location-title { font-size: 14px; font-weight: 700; color: var(--ink2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.location-current { font-size: 12.5px; font-weight: 500; color: var(--sub); }
+.location-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.location-picker { display: flex; flex-direction: column; gap: 8px; }
+.lp-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.lp-field { display: flex; flex-direction: column; gap: 5px; }
+.lp-field:first-child { flex: 1 1 240px; }
+.lp-label { font-size: 12.5px; font-weight: 600; color: var(--sub); }
+.lp-select, .lp-room {
+  font: inherit; font-size: 15px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--r-sm);
+  background: #fff; color: var(--ink); outline: none; min-height: 44px;
+}
+.lp-select:focus, .lp-room:focus { border-color: var(--kg); }
+.lp-room-wrap { display: flex; align-items: center; gap: 6px; }
+.lp-room { width: 120px; letter-spacing: 1px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.lp-unit { font-weight: 600; color: var(--ink2); }
+.lp-keypad {
+  display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; padding: 10px; width: max-content;
+  background: var(--bg); border-radius: var(--r-md); border: 1px solid var(--line);
+}
+.lp-key {
+  font: inherit; font-size: 20px; font-weight: 700; height: 52px; border: 0; border-radius: 10px;
+  background: #fff; color: var(--ink); cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); touch-action: manipulation;
+}
+.lp-key:active { transform: scale(0.96); background: var(--kg-soft); }
+.lp-key:focus-visible { outline: 3px solid var(--kg); outline-offset: 1px; }
+.lp-key.is-back { font-size: 18px; color: var(--sub); }
+.lp-key.is-done { font-size: 15px; background: var(--kg); color: #fff; }
+.lp-hint { margin: 0; font-size: 12px; color: var(--sub); }
+.lp-preview { margin: 0; font-size: 13px; color: var(--sub); }
+.lp-preview.is-ready { color: var(--kg); font-weight: 700; }
+.lp-legacy { margin: 0; font-size: 12.5px; color: #e67700; background: var(--warn-bg); padding: 8px 10px; border-radius: var(--r-sm); }
 
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
 .filter { font-size: 12.5px; font-weight: 600; padding: 7px 11px; border-radius: 999px; background: var(--bg); color: var(--sub); border: 0; cursor: pointer; }
