@@ -98,8 +98,10 @@ export function renderHome(root) {
 
   // ----- 레이아웃: 상단 바 -----
   const header = el('header', 'topbar');
-  const logo = el('div', 'logo', 'KGU');
-  logo.setAttribute('aria-hidden', 'true');
+  const logo = el('img', 'logo');
+  logo.src = '/kgu-logo.png'; // 경기대학교 로고 (web/kiosk/public/kgu-logo.png)
+  logo.alt = '경기대학교';
+  logo.decoding = 'async';
   const brand = el('div', 'brand', '열람실 좌석');
   brand.append(el('small', null, '열람실 A·B·C 실시간 현황'));
   const liveBadge = el('span', 'live is-offline', '연결 중');

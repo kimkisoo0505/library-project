@@ -63,10 +63,8 @@ h2 { font-size: 1.1rem; }
   border-bottom: 1px solid transparent;
 }
 .topbar.scrolled { border-bottom-color: var(--line); }
-.logo {
-  width: 30px; height: 30px; border-radius: 9px; background: var(--kg); color: #fff;
-  font-size: 10px; font-weight: 800; display: grid; place-items: center; flex: none;
-}
+/* 경기대학교 로고 이미지 (가로가 긴 로고: 높이 기준으로 맞춤) */
+.logo { height: 32px; width: auto; display: block; flex: none; object-fit: contain; }
 .brand { font-size: 17px; font-weight: 700; line-height: 1.15; }
 .brand small { display: block; font-size: 11px; color: var(--sub); font-weight: 500; margin-top: 1px; }
 .live { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--sub); font-weight: 600; white-space: nowrap; }
