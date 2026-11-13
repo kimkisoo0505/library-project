@@ -16,6 +16,7 @@ import { STATE_LABELS } from './components/seat-card.js';
 import { createRoomTabs, roomPreference } from './components/room-tabs.js';
 import { createCentralLibraryPanel, congestionLevel, createLevelPill } from './components/central-library.js';
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from './components/system-status.js';
+import { createNearbyCard } from './components/nearby-card.js';
 import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from './app-bridge.js';
 import { createWebBlePresence, webBleSupport } from './web-ble.js';
 
@@ -179,7 +180,17 @@ export function renderPersonalHome(root) {
 
   const systemStatus = SHOW_SYSTEM_STATUS ? createSystemStatusBar() : null;
 
-  seatsView.append(hero, mapSection, miniCard, ...(systemStatus ? [systemStatus.element] : []), footer);
+  // 가까운 열람실 (개인 사용 화면 전용): 버튼을 누르면 위치를 묻고 A·B·C·중앙도서관 중 가까운 곳을 안내
+  const nearbyCard = createNearbyCard({
+    onShowRoom: (code) => {
+      setTab('seats');
+      selectRoom(code);
+      mapSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    onShowCentral: () => setTab('central'),
+  });
+
+  seatsView.append(hero, nearbyCard.element, mapSection, miniCard, ...(systemStatus ? [systemStatus.element] : []), footer);
 
   // ----- 중앙도서관 탭 -----
   const centralView = el('main', 'view page view-central');
@@ -702,6 +713,8 @@ export function renderPersonalHome(root) {
   function renderCentralExtras() {
     const campuses = state.central?.available ? state.central.campuses ?? [] : [];
     const main = campuses.find((c) => c.id === 1) ?? campuses[0];
+    // 가까운 열람실 카드: 열람실 빈자리·위치 + 중앙도서관(수원) 빈자리
+    nearbyCard.update(state.rooms, campuses.find((c) => c.id === 1) ?? null);
 
     miniButton.replaceChildren();
     const ic = el('span', 'ic', '📚');

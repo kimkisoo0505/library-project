@@ -1,7 +1,7 @@
 // 관리자 강의실 위치 (건물 + 호실) 형식 단위 테스트
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BUILDINGS, buildingLabel, formatLocation, parseLocation, isValidRoom, ROOM_MAX_DIGITS } from '../src/admin/location-format.js';
+import { BUILDINGS, buildingLabel, formatLocation, parseLocation, isValidRoom, ROOM_MAX_DIGITS } from '../src/common/campus-buildings.js';
 
 test('건물 목록: 1~9강의동 + 그 밖의 건물, id 중복 없음', () => {
   const ids = BUILDINGS.map((b) => b.id);
@@ -9,7 +9,8 @@ test('건물 목록: 1~9강의동 + 그 밖의 건물, id 중복 없음', () => 
   for (let n = 1; n <= 9; n += 1) assert.ok(BUILDINGS.some((b) => b.short === `${n}강의동`), `${n}강의동`);
   assert.equal(buildingLabel(BUILDINGS.find((b) => b.id === 'L5')), '5강의동 덕문관');
   assert.ok(BUILDINGS.some((b) => b.short === '제2공학관'));
-  assert.ok(!BUILDINGS.some((b) => /운동장|정문|후문|경기탑|한우리관/.test(b.short)), '실내 공간 없는 곳·철거·운영 종료 제외');
+  assert.ok(!BUILDINGS.some((b) => /운동장|정문|후문|잔디광장|경기탑/.test(b.short)), '실내 공간 없는 곳·철거된 곳만 제외');
+  for (const name of ['한우리관', '이민규센터', '9강의동']) assert.ok(BUILDINGS.some((b) => b.short === name), `애매한 곳도 포함: ${name}`);
 });
 
 test('저장 형식: "5강의동 4405호", 그 밖 건물은 이름 그대로', () => {

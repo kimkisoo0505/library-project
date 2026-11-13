@@ -489,10 +489,11 @@ h2 { font-size: 1.1rem; }
   .view-seats {
     display: grid; align-items: start;
     grid-template-columns: minmax(0, 1fr) 360px;
-    grid-template-rows: auto auto auto 1fr auto;
-    grid-template-areas: 'map hero' 'map mini' 'map status' 'map .' 'foot foot';
+    grid-template-rows: auto auto auto auto 1fr auto;
+    grid-template-areas: 'map hero' 'map nearby' 'map mini' 'map status' 'map .' 'foot foot';
   }
-  .view-seats > .hero-slot { grid-area: hero; position: sticky; top: 79px; }
+  .view-seats > .hero-slot { grid-area: hero; }
+  .view-seats > .nearby-card { grid-area: nearby; }
   .view-seats > .map-section { grid-area: map; padding: 20px 22px 22px; }
   .view-seats > .mini-card { grid-area: mini; }
   .view-seats > .system-status { grid-area: status; }
@@ -568,3 +569,36 @@ h2 { font-size: 1.1rem; }
   .tabbar button { padding: 8px 10px; }
   #app[data-page='home'] .topbar .live { font-size: 0; gap: 0; }
 }
+
+/* ----- 가까운 열람실 카드 (개인 사용 화면 전용) ----- */
+.nearby-card { display: flex; flex-direction: column; gap: 10px; }
+.nearby-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nearby-title { margin: 0; font-size: 16px; }
+.nearby-desc, .nearby-privacy, .nearby-map-note { margin: 0; font-size: 12.5px; color: var(--sub); line-height: 1.5; }
+.nearby-error { margin: 0; font-size: 13px; color: #e67700; background: var(--warn-bg); padding: 9px 11px; border-radius: var(--r-sm); }
+.btn.nearby-find { width: 100%; min-height: 48px; background: var(--kg); color: #fff; border-radius: var(--r-md); font-weight: 700; }
+.nearby-again { border: 0; background: var(--bg); color: var(--ink2); font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.nearby-best { background: var(--kg-soft); border-radius: var(--r-md); padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.nearby-best-k { font-size: 12px; color: var(--kg); font-weight: 700; }
+.nearby-best-v { font-size: 18px; font-weight: 800; color: var(--ink); }
+.nearby-best-d { font-size: 13px; color: var(--ink2); }
+.nearby-best-actions { display: flex; gap: 8px; margin-top: 8px; }
+.nearby-best-actions .btn { flex: 1; min-height: 42px; border-radius: 10px; font-size: 14px; font-weight: 700; }
+.btn.nearby-show { background: #fff; color: var(--kg); }
+.btn.nearby-route-main { background: #fee500; color: #191919; text-decoration: none; } /* 카카오 노란색 */
+.nearby-map { height: 220px; border-radius: var(--r-md); overflow: hidden; background: var(--bg); }
+.nearby-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.nearby-item { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 8px 0; }
+.nearby-item:first-child { border-top: 0; }
+.nearby-item-main { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 2px 0; }
+.nearby-name { font-weight: 700; font-size: 14px; display: flex; flex-direction: column; }
+.nearby-name small { font-weight: 500; font-size: 12px; color: var(--sub); }
+.nearby-meta { font-size: 12.5px; color: var(--sub); white-space: nowrap; }
+.nearby-item.is-best .nearby-name { color: var(--kg); }
+.nearby-item.is-full .nearby-meta { color: var(--bad); }
+.nearby-route { font-size: 12.5px; font-weight: 700; color: var(--kg); text-decoration: none; padding: 6px 8px; border-radius: 8px; background: var(--bg); white-space: nowrap; }
+/* 카카오맵 위 표시 (내 위치 점, 장소 이름표) */
+.km-me { width: 14px; height: 14px; border-radius: 50%; background: #3182f6; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(49, 130, 246, 0.25); }
+.km-label { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 3px 7px; font-size: 12px; font-weight: 700; color: var(--ink2); white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
+.km-label.is-best { background: var(--kg); color: #fff; border-color: var(--kg); }
+.km-label.is-full { color: var(--bad); }

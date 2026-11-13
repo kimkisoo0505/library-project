@@ -4,11 +4,11 @@
  * - 건물: 목록에서 고른다 (강의동 1~9 · 그 밖의 건물).
  * - 호실: 칸을 누르면 화면 위 숫자 키패드(0~9, ⌫, 확인)가 뜬다. PC 키보드로 숫자를 쳐도 된다.
  *   휴대폰·태블릿 기본 자판은 띄우지 않는다 (inputmode="none") — 화면 키패드만 쓴다.
- * - 결과는 한 줄 글자("5강의동 4405호")로 만들어 서버에 저장한다 (location-format.js).
+ * - 결과는 한 줄 글자("5강의동 4405호")로 만들어 서버에 저장한다 (common/campus-buildings.js).
  */
 import {
   BUILDINGS, ROOM_MAX_DIGITS, buildingLabel, formatLocation, parseLocation,
-} from '../location-format.js';
+} from '../../common/campus-buildings.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);

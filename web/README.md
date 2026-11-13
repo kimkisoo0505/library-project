@@ -14,7 +14,7 @@
 | 경로 | 화면 | 코드 | 인증 |
 |---|---|---|---|
 | `#/kiosk` | **키오스크 모드** 학생 화면: 입구 등 공용 기기용. 개인 기능 없음, 90초 동안 입력이 없으면 자동 로그아웃 | `src/kiosk/` | 학생 세션 (좌석 현황은 비로그인 조회 가능) |
-| `#/personal` | **개인 사용 모드** 학생 화면: 본인 휴대폰·앱용. 블루투스 좌석 자동 연장, 자동 로그아웃 없음 | `src/personal/` | 학생 세션 |
+| `#/personal` | **개인 사용 모드** 학생 화면: 본인 휴대폰·앱용. 블루투스 좌석 자동 연장, 가까운 열람실 찾기(GPS·카카오맵), 자동 로그아웃 없음 | `src/personal/` | 학생 세션 |
 | `#/admin` | 좌석 관리(점검 전환, 예약 해제, 호수, 배치 편집), 장치, 이벤트 로그 | `src/admin/` | 관리자 세션 (학생 세션과 분리) |
 | `#/` (그 외) | 저장된 모드 → 없으면 기기 기본값(휴대폰 = 개인 사용, 그 외 = 키오스크)으로 이동. 앱(WebView)은 항상 개인 사용 | `src/common/routes.js` | — |
 
@@ -35,13 +35,15 @@ kiosk/
 │   ├── main.js             해시 라우터 (화면별 코드를 필요할 때만 불러옴)
 │   ├── common/             공용: api.js(REST, 학생/관리자 토큰 분리), websocket.js(좌석 변경 알림),
 │   │                       app-detect.js(앱 감지), usage-mode.js(모드 기본값·저장·전환), routes.js(주소 결정),
-│   │                       test-accounts.js(시연용 테스트 계정 안내)
+│   │                       test-accounts.js(시연용 테스트 계정 안내),
+│   │                       campus-buildings.js(수원캠퍼스 건물 목록·좌표·강의실 위치 형식 — 관리자·개인 화면 공용)
 │   ├── kiosk/              키오스크 모드: home.js, style.css, components/(seat-card, seat-map, room-tabs,
 │   │                       login-form, central-library, system-status)
 │   ├── personal/           개인 사용 모드: home.js, style.css, components/(위와 같은 목록),
-│   │                       web-ble.js(브라우저 블루투스), app-bridge.js(앱 WebView 연동)
+│   │                       web-ble.js(브라우저 블루투스), app-bridge.js(앱 WebView 연동),
+│   │                       nearby.js·geo.js·kakao-map.js·components/nearby-card.js(가까운 열람실: 위치·거리·지도)
 │   └── admin/              관리자 화면: admin.js, style.css, components/(layout-editor, seat-map, seat-card,
-│                           room-tabs, login-form)
+│                           room-tabs, login-form, location-picker(건물 목록 + 호실 숫자 키패드))
 └── tests/                  npm test (node --test): 모드·주소·블루투스(가짜 Pi)
 ```
 
