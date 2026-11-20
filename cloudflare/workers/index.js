@@ -20,6 +20,7 @@ import {
   expireStaleReservations,
 } from './reservations.js';
 
+import { handleMyStats, handleMyHistory, handleAdminStats } from './stats.js';
 import { handleCentralLibrary, handleDeviceCentralLibrary } from './central-library.js';
 import { handleDeviceStatus, handleSystemStatus, handleAdminDeviceShutdown } from './system-status.js';
 
@@ -44,6 +45,8 @@ const router = new Router()
   .post('/api/reservations', handleCreateReservation)
   .get('/api/reservations/me', handleMyReservation)
   .post('/api/reservations/me/presence', handlePresence)
+  .get('/api/reservations/me/stats', handleMyStats)
+  .get('/api/reservations/me/history', handleMyHistory)
   .delete('/api/reservations/:id', handleCancelReservation)
   .post('/api/reservations/:id/check-in', handleCheckIn)
   .post('/api/reservations/:id/check-out', handleCheckOut)
@@ -55,6 +58,7 @@ const router = new Router()
   .post('/api/admin/rooms/:code/layout', handleAdminSetRoomLayout)
   .post('/api/admin/reservations/:id/release', handleAdminReleaseReservation)
   .get('/api/admin/events', handleAdminEvents)
+  .get('/api/admin/stats', handleAdminStats)
   .post('/api/admin/devices/:room/shutdown', handleAdminDeviceShutdown)
 
   // 라즈베리파이 장치

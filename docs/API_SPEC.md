@@ -109,6 +109,8 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 | POST | `/reservations/:id/check-in` | 착석 (기한 내) + 이용 시간 `{ "hours": 1~4 }` (필수) | reserved → occupied |
 | POST | `/reservations/:id/check-out` | 퇴실 | occupied → completed |
 | POST | `/reservations/me/presence` | 재실 확인 `{}` (모바일 앱, 블루투스 연결 중) — 남은 시간이 2시간 미만이면 2시간으로 | occupied 유지 |
+| GET | `/reservations/me/stats` | 내 공부 시간·이용 통계 (아래 참고) | — |
+| GET | `/reservations/me/history?limit=20&before_id=` | 내 이용 기록 최신순 (limit 1~50). 다음 페이지는 응답의 `next_before_id` 로 | — |
 
 이용 시간 (migration 0005):
 - 착석 시 `hours`(1~4)를 고르면 `usage_ends_at = 착석 시각 + hours`. 잘못된 값은 `400 invalid_usage_hours`.
@@ -129,6 +131,19 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 
 상태 전이 오류: `409 invalid_reservation_state`
 
+**블루투스 착석 확인 (화면 전용, 2026-11-20 사용자 결정)**: 개인 사용 화면(`#/personal`)과 앱에서는 블루투스 장치가 있는 열람실(현재 A)의
+예약을 열람실 장치와 블루투스로 연결되어 거리 안에 있을 때만 [착석] 버튼이 눌린다. 서버의 `check-in` 은 이를 확인하지 않으며
+(키오스크 모드 화면·장치 없는 열람실 B·C 는 예외로 지금처럼 착석), 조작된 클라이언트는 우회할 수 있다.
+
+공부 시간·이용 통계 (`stats.js`, 날짜·시간대는 한국 시간):
+- 공부 시간 = 착석(`checked_in_at`) ~ 퇴실(`checked_out_at`, 없으면 `ended_at`, 이용 중이면 지금). 단 `usage_ends_at` 을 넘지 않는다
+  (자동 퇴실 Cron 의 최대 1분 지연은 넣지 않음). 착석하지 않은 예약은 0분. 자정을 넘긴 이용은 날짜별로 나눈다.
+- `GET /reservations/me/stats` → `{ "stats": { total_study_minutes, sessions, reservations, no_shows, cancelled, today_minutes,
+  week_minutes(오늘 포함 최근 7일), average_session_minutes, longest_session_minutes, study_days, streak_days(오늘 또는 어제부터 이어진 날 수),
+  favorite_seat: { seat_id, label, room, count } | null, daily: [{ date: 'YYYY-MM-DD', minutes }] (7개) } }`
+- `GET /reservations/me/history` → `{ "history": [{ id, seat_id, seat_label, room, room_name, status, end_reason, reserved_at,
+  checked_in_at, ended_at, usage_hours, study_minutes }], "next_before_id": number | null }`
+
 예약 후 `RESERVATION_HOLD_MINUTES`(기본 15분) 안에 착석하지 않으면 `expired` 처리됩니다.
 
 ## 5. 관리자 (관리자 세션)
@@ -141,6 +156,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 | POST | `/admin/rooms/:code/location` | 강의실 위치(호수) 저장 `{ "location": "00관 000호" }` — 앞뒤 공백 제거, 최대 40자, 빈 문자열이면 지움. `<`, `>`, 제어 문자는 `400 invalid_parameter`. 없는 열람실 `404 room_not_found`. 이벤트 `room.location_changed` 기록 후 `seats.changed` 알림 |
 | POST | `/admin/reservations/:id/release` | 활성 예약 강제 해제 `{ "reason": "..." }` (사유 필수) |
 | GET | `/admin/events?limit=50&before_id=` | 이벤트 로그 최신순 (limit 1~200) |
+| GET | `/admin/stats?days=7` | 이용 통계 (days 1~31, 기본 7, 그 밖은 `400 invalid_parameter`). 한국 날짜로 오늘 포함 최근 days 일. → `{ "stats": { days, from, totals: { reservations, check_ins, no_shows, cancelled, no_show_rate, unique_students, study_minutes, average_session_minutes, total_seats }, daily: [{ date, reservations, check_ins, no_shows, study_minutes }], hourly: [{ hour 0~23, avg_occupied }](기간 중 그 시간대 평균 사용 좌석 수), rooms: [{ code, name, seats, check_ins, study_minutes }] } }`. 예약·노쇼는 예약 시각, 착석은 착석 시각 기준이며 공부 시간은 기간으로 잘라 센다. 학생별 순위·학번은 넣지 않는다 |
 | POST | `/admin/devices/:room/shutdown` | 라즈베리파이 원격 종료 `{ "confirm": "SHUTDOWN" }` → 202. 장치가 90초 내 보고가 없으면 `409 device_offline`, 실시간 연결이 없으면 `409 device_not_listening`. 아두이노 열람실은 `400 unsupported_device` |
 
 ## 6. 장치 (장치 토큰)

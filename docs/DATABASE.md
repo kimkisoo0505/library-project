@@ -97,6 +97,8 @@ reserved ─┼── 기한 초과 ─▶ expired
 ```
 마이그레이션 0005 적용 시점에 이미 착석 중이던 예약은 `usage_hours = 4`, `usage_ends_at = 적용 시각 + 4시간`으로 채웁니다.
 
+이용 기록·통계 (0008_stats_indexes): 별도 테이블 없이 이 테이블에서 계산한다. 공부 시간 = `checked_in_at` ~ `checked_out_at`(없으면 `ended_at`, 이용 중이면 지금), `usage_ends_at` 을 넘지 않음. 조회용 인덱스 `ix_reservations_student (student_id, id)`(내 기록 최신순), `ix_reservations_reserved_at`, `ix_reservations_ended_at`(관리자 기간 통계).
+
 ### events — 감사 로그
 `occurred_at, source(web/admin/device/system), event_type, actor_type, actor_id, seat_id, reservation_id, payload(JSON)`
 비밀번호·토큰은 기록하지 않으며, 로그인 실패 시 존재하지 않는 학번은 저장하지 않습니다.

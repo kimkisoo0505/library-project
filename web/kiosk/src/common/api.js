@@ -107,6 +107,11 @@ export const api = {
   /** 재실 확인 (모바일 앱이 블루투스로 열람실 장치와 연결되었을 때). 남은 시간이 2시간 미만이면 2시간으로 */
   presence: () => request('/reservations/me/presence', { method: 'POST', auth: 'student', body: {} }),
   checkOut: (id) => request(`/reservations/${encodeURIComponent(id)}/check-out`, { method: 'POST', auth: 'student' }),
+  /** 내 공부 시간 · 이용 통계 */
+  myStats: () => request('/reservations/me/stats', { auth: 'student' }),
+  /** 내 이용 기록 (최신순). beforeId 로 다음 페이지 */
+  myHistory: (limit = 10, beforeId = null) =>
+    request(`/reservations/me/history?limit=${encodeURIComponent(limit)}${beforeId ? `&before_id=${encodeURIComponent(beforeId)}` : ''}`, { auth: 'student' }),
 
   adminListSeats: () => request('/admin/seats', { auth: 'admin' }),
   adminSetRoomLocation: (roomCode, location) =>
@@ -117,6 +122,8 @@ export const api = {
     request(`/admin/seats/${encodeURIComponent(seatId)}/status`, { method: 'POST', auth: 'admin', body: { status, reason } }),
   adminReleaseReservation: (id, reason) =>
     request(`/admin/reservations/${encodeURIComponent(id)}/release`, { method: 'POST', auth: 'admin', body: { reason } }),
+  /** 기간 통계 (1~31일) */
+  adminStats: (days = 7) => request(`/admin/stats?days=${encodeURIComponent(days)}`, { auth: 'admin' }),
   adminEvents: (limit = 50) => request(`/admin/events?limit=${encodeURIComponent(limit)}`, { auth: 'admin' }),
   adminShutdownDevice: (room) =>
     request(`/admin/devices/${encodeURIComponent(room)}/shutdown`, { method: 'POST', auth: 'admin', body: { confirm: 'SHUTDOWN' } }),

@@ -1,0 +1,43 @@
+/* 내 공부 기록 패널 (common/study-stats.js) — 개인 사용 · 키오스크 "내 이용" 탭 공용.
+   색·모서리는 각 화면 style.css 의 디자인 토큰(--kg, --sub, --card …)을 그대로 쓴다. */
+
+.study-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.study-tile { background: var(--card); border-radius: var(--r-lg); padding: 16px; min-width: 0; }
+.study-tile .k { font-size: 12.5px; color: var(--sub); }
+.study-tile .v { font-size: 22px; font-weight: 800; margin-top: 4px; color: var(--ink); letter-spacing: -0.4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.study-tile .s { font-size: 12px; color: var(--sub); margin-top: 2px; }
+
+/* 최근 7일 막대 그래프: 한 계열 → 한 색(--kg), 범례 없음(제목이 이름), 값은 오늘·최댓값에만 */
+.study-readout { font-size: 12.5px; color: var(--ink2); min-height: 18px; margin: -4px 0 10px; font-variant-numeric: tabular-nums; }
+.study-chart { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; height: 150px; align-items: stretch; }
+.study-col {
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0;
+  background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; border-radius: var(--r-sm);
+}
+.study-col:focus-visible { outline: 3px solid var(--kg); outline-offset: 2px; }
+.study-track { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; border-bottom: 1px solid var(--line); }
+.study-bar { display: block; width: 62%; max-width: 28px; background: var(--kg); opacity: 0.55; border-radius: 4px 4px 0 0; transition: opacity 0.15s; }
+.study-col.is-today .study-bar { opacity: 1; }
+.study-col.is-active .study-bar, .study-col:hover .study-bar { opacity: 1; }
+.study-val { font-size: 11px; font-weight: 700; color: var(--ink2); margin-bottom: 3px; font-variant-numeric: tabular-nums; }
+.study-day { font-size: 11.5px; color: var(--sub); text-align: center; }
+.study-col.is-today .study-day { color: var(--ink); font-weight: 700; }
+
+.study-facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; font-size: 14px; }
+.study-facts dt { color: var(--sub); }
+.study-facts dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.study-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.study-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); }
+.study-h:first-child { border-top: 0; padding-top: 2px; }
+.study-h-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.study-h-main b { font-size: 15px; }
+.study-h-date { font-size: 13px; color: var(--ink2); }
+.study-h-range { font-size: 12.5px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.study-h-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.study-h-min { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.study-h-state { font-size: 11.5px; color: var(--sub); }
+.study-h-occupied .study-h-state { color: var(--ok); font-weight: 700; }
+.study-h-expired .study-h-state { color: var(--bad); }
+.study-more { margin-top: 12px; width: 100%; }
+.study-error { display: flex; flex-direction: column; gap: 10px; }

@@ -96,6 +96,10 @@ CREATE INDEX IF NOT EXISTS ix_reservations_status_expires
     ON reservations (status, expires_at);
 CREATE INDEX IF NOT EXISTS ix_reservations_status_usage_ends
     ON reservations (status, usage_ends_at);
+-- 0008_stats_indexes: 이용 기록 · 통계 조회
+CREATE INDEX IF NOT EXISTS ix_reservations_student ON reservations (student_id, id);
+CREATE INDEX IF NOT EXISTS ix_reservations_reserved_at ON reservations (reserved_at);
+CREATE INDEX IF NOT EXISTS ix_reservations_ended_at ON reservations (ended_at);
 
 -- 감사/이벤트 로그 (비밀번호, 토큰은 절대 기록하지 않음)
 CREATE TABLE IF NOT EXISTS events (

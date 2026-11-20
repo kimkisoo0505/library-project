@@ -16,6 +16,7 @@ import { STATE_LABELS } from './components/seat-card.js';
 import { createRoomTabs, roomPreference } from './components/room-tabs.js';
 import { createCentralLibraryPanel, congestionLevel, createLevelPill } from './components/central-library.js';
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from './components/system-status.js';
+import { createStudyStatsPanel } from '../common/study-stats.js';
 
 const SYSTEM_STATUS_POLL_MS = 15_000;
 
@@ -230,6 +231,9 @@ export function renderKioskHome(root) {
   meHead.append(el('div', 'sec-title', '내 이용'), meSub);
   const meBody = el('div', 'stack');
   meView.append(meHead, meBody);
+  // 공부 기록(총 공부 시간·최근 7일·이용 기록). 로그아웃(자동 로그아웃 포함)하면 지운다
+  const studyPanel = createStudyStatsPanel({ onAuthError: () => logout(false) });
+  let studyDirty = true; // 착석·퇴실 등으로 기록이 바뀌어 다시 불러와야 함
 
   // ----- 하단 탭 -----
   const tabbar = el('nav', 'tabbar');
@@ -417,6 +421,8 @@ export function renderKioskHome(root) {
     session.clear('student');
     state.user = null;
     state.selectedSeatId = null;
+    studyPanel.clear();
+    studyDirty = true;
     seatMap.setSelected(null);
     closeSheet();
     setTab('seats');
@@ -433,6 +439,7 @@ export function renderKioskHome(root) {
     try {
       await action();
       ok = true;
+      studyDirty = true;
       showMessage(successText, 'success');
     } catch (err) {
       showMessage(err.message, 'error');
@@ -643,14 +650,6 @@ export function renderKioskHome(root) {
   }
 
   // ----- 내 이용 탭 -----
-  function soonCard(title, note) {
-    const card = el('section', 'card');
-    const h = el('div', 'card-title', title);
-    h.append(el('span', 'soon', '기능 추가 예정'));
-    card.append(h, el('p', 'note', note));
-    return card;
-  }
-
   function renderMe() {
     meBody.replaceChildren();
     if (!state.user) {
@@ -680,22 +679,12 @@ export function renderKioskHome(root) {
       now.append(el('p', 'note', '이용 중인 좌석이 없어요. 좌석 탭에서 예약할 수 있어요.'));
     }
 
-    const stats = el('div', 'stats');
-    for (const label of ['이용 횟수', '누적 공부 시간']) {
-      const stat = el('div', 'stat');
-      const k = el('div', 'k', label);
-      k.append(el('span', 'soon', '추가 예정'));
-      stat.append(k, el('div', 'v', '—'));
-      stats.append(stat);
-    }
-
     meBody.append(
       now,
-      stats,
-      soonCard('자주 앉는 자리', '이용 기록을 바탕으로 자주 앉는 자리와 비슷한 조건의 빈자리를 추천하는 기능은 추가 예정입니다.'),
-      soonCard('최근 이용', '날짜별 이용 기록(좌석, 시작 시각, 이용 시간)을 보여 주는 기능은 추가 예정입니다.'),
+      studyPanel.element, // 같은 요소를 다시 붙인다 (다시 그려도 불러온 기록 유지)
       actionButton('로그아웃', 'cta ghost', () => logout(true)),
     );
+    if (state.tab === 'me') { studyPanel.load(studyDirty); studyDirty = false; }
   }
 
   // ----- 탭 전환 -----
@@ -705,6 +694,7 @@ export function renderKioskHome(root) {
     seatsView.hidden = tab !== 'seats';
     centralView.hidden = tab !== 'central';
     meView.hidden = tab !== 'me';
+    if (tab === 'me' && state.user) { studyPanel.load(studyDirty); studyDirty = false; }
     for (const [key, b] of Object.entries(tabButtons)) {
       b.classList.toggle('on', key === tab);
       if (key === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');

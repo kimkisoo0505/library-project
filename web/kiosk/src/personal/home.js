@@ -2,7 +2,11 @@
  * 개인 사용 모드 학생 화면 (#/personal) — 본인 휴대폰·모바일 앱용.
  *
  * 키오스크 모드(src/kiosk/)와 완전히 별개의 코드다 (처음엔 같은 화면을 복제해 시작했다).
- * 개인 특화 기능은 여기에만 둔다: 블루투스 좌석 자동 연장(웹 블루투스·앱 연동). 자동 로그아웃 없음.
+ * 개인 특화 기능은 여기에만 둔다: 블루투스 좌석 자동 연장(웹 블루투스·앱 연동), 블루투스 착석 확인. 자동 로그아웃 없음.
+ *
+ * 블루투스 착석 확인: 장치가 있는 열람실(PRESENCE_ROOMS, 현재 A)의 예약은 열람실 장치와 블루투스로
+ * 연결되어 거리 안에 있을 때만 [착석] 버튼이 눌린다. 화면에서만 막는 기능이다(서버는 확인하지 않음 —
+ * 사용자 결정). 장치가 없는 열람실과 키오스크 모드 화면은 예외로 지금처럼 착석할 수 있다.
  * 서버 통신(api.js, websocket.js)만 src/common/ 의 공용 코드를 쓴다.
  */
 import './style.css';
@@ -19,6 +23,7 @@ import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from './components/system-s
 import { createNearbyCard } from './components/nearby-card.js';
 import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from './app-bridge.js';
 import { createWebBlePresence, webBleSupport } from './web-ble.js';
+import { createStudyStatsPanel } from '../common/study-stats.js';
 
 /** 앱 모드: 재실 확인을 서버에 보내는 최소 간격 (서버는 남은 시간을 2시간으로 유지) */
 const PRESENCE_REPORT_MS = 60_000;
@@ -246,6 +251,9 @@ export function renderPersonalHome(root) {
   meHead.append(el('div', 'sec-title', '내 이용'), meSub);
   const meBody = el('div', 'stack');
   meView.append(meHead, meBody);
+  // 공부 기록(총 공부 시간·최근 7일·이용 기록). 401 이면 로그아웃
+  const studyPanel = createStudyStatsPanel({ onAuthError: () => logout(false) });
+  let studyDirty = true; // 착석·퇴실 등으로 기록이 바뀌어 다시 불러와야 함
 
   // ----- 하단 탭 -----
   const tabbar = el('nav', 'tabbar');
@@ -432,6 +440,8 @@ export function renderPersonalHome(root) {
     session.clear('student');
     state.user = null;
     state.selectedSeatId = null;
+    studyPanel.clear();
+    studyDirty = true;
     seatMap.setSelected(null);
     closeSheet();
     setTab('seats');
@@ -448,6 +458,7 @@ export function renderPersonalHome(root) {
     try {
       await action();
       ok = true;
+      studyDirty = true;
       showMessage(successText, 'success');
     } catch (err) {
       showMessage(err.message, 'error');
@@ -489,6 +500,20 @@ export function renderPersonalHome(root) {
   let lastPresenceReport = 0;
   let presenceInFlight = false;
 
+  /** 블루투스가 필요한 상태: 장치가 있는 열람실에서 예약 중(착석 확인) 또는 이용 중(자동 연장) */
+  function wantsBle(mine) {
+    return Boolean(state.user && mine && (mine.state === 'occupied' || mine.state === 'reserved') && PRESENCE_ROOMS.includes(mine.room));
+  }
+
+  /**
+   * 블루투스 착석 확인 (화면 전용). 장치가 없는 열람실은 확인 없이 착석할 수 있다.
+   * @returns {{ needed: boolean, ok: boolean }}
+   */
+  function checkInGate(mine) {
+    const needed = Boolean(mine && PRESENCE_ROOMS.includes(mine.room));
+    return { needed, ok: !needed || state.appPresence?.inRange === true };
+  }
+
   /** 앱이 블루투스를 켜야 하는지 판단할 정보만 보낸다 (토큰·학번은 보내지 않음) */
   function notifyApp() {
     if (!IN_APP) return;
@@ -497,7 +522,8 @@ export function renderPersonalHome(root) {
       type: 'state',
       loggedIn: Boolean(state.user),
       seat: mine ? { room: mine.room, state: mine.state, usage_ends_at: mine.usage_ends_at ?? null } : null,
-      presenceWanted: Boolean(mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room)),
+      // 이용 중(자동 연장) 또는 예약 중(블루투스 착석 확인)일 때 블루투스를 켠다
+      presenceWanted: wantsBle(mine),
     });
   }
 
@@ -525,6 +551,7 @@ export function renderPersonalHome(root) {
     onAppPresence((p) => {
       state.appPresence = p;
       renderHero();
+      if (sheetState.kind === 'hours') renderSheet(); // 착석 버튼 활성/비활성
       maybeReportPresence();
     });
   }
@@ -537,17 +564,18 @@ export function renderPersonalHome(root) {
       onChange: (p) => {
         state.appPresence = p.status === 'idle' ? null : p;
         renderHero();
+        if (sheetState.kind === 'hours') renderSheet(); // 착석 버튼 활성/비활성
         maybeReportPresence();
       },
     })
     : null;
   let webBleResumeTried = false;
 
-  /** 열람실 A 에서 이용 중일 때만 블루투스를 유지한다. 퇴실·로그아웃하면 끊는다. */
+  /** 열람실 A 에서 예약 중(착석 확인)·이용 중(자동 연장)일 때만 블루투스를 유지한다. 퇴실·취소·로그아웃하면 끊는다. */
   function syncWebBle() {
     if (!webBle) return;
     const mine = mySeat();
-    const wanted = Boolean(state.user && mine && mine.state === 'occupied' && PRESENCE_ROOMS.includes(mine.room));
+    const wanted = wantsBle(mine);
     if (!wanted) {
       if (webBle.active || state.appPresence) { webBle.stop(); state.appPresence = null; }
       return;
@@ -558,7 +586,8 @@ export function renderPersonalHome(root) {
     }
   }
 
-  function webPresenceBox() {
+  /** @param {boolean} reserved 예약 중(착석 전)이면 착석 확인 문구 */
+  function webPresenceBox(reserved = false) {
     const p = state.appPresence;
     const box = el('div', 'presence-web');
     const on = (text, cls = '') => box.append(el('span', `chip-glass ${cls}`.trim(), text));
@@ -570,32 +599,41 @@ export function renderPersonalHome(root) {
     };
     const status = p?.status ?? 'idle';
     if (status === 'connected' && p.inRange) {
-      on('📶 블루투스로 자리 확인됨 · 남은 시간이 2시간 아래로 줄지 않아요', 'presence-ok');
-      btn('끄기', () => webBle.stop(), 'presence-btn presence-btn-ghost');
+      on(reserved ? '📶 열람실 안에 있어요 · 착석할 수 있어요' : '📶 블루투스로 자리 확인됨 · 남은 시간이 2시간 아래로 줄지 않아요', 'presence-ok');
+      if (!reserved) btn('끄기', () => webBle.stop(), 'presence-btn presence-btn-ghost'); // 착석 전에 끄면 착석할 수 없다
     } else if (status === 'connected') {
       on('📶 열람실 장치 응답 확인 중…', 'presence-weak');
     } else if (status === 'choosing' || status === 'connecting') {
       on('📶 열람실 장치에 연결하는 중…');
     } else if (status === 'reconnecting') {
-      on(`📶 ${p.reason || '다시 연결하는 중'} · 시간이 줄어들고 있어요`, 'presence-weak');
+      on(`📶 ${p.reason || '다시 연결하는 중'}${reserved ? '' : ' · 시간이 줄어들고 있어요'}`, 'presence-weak');
     } else {
-      on(p?.reason ? `📵 ${p.reason}` : '📵 블루투스로 자리를 확인하면 자리에 있는 동안 자동 연장돼요', 'presence-off');
-      btn('블루투스로 자리 확인 켜기', () => webBle.start());
+      on(p?.reason ? `📵 ${p.reason}` : reserved
+        ? '📵 착석하려면 열람실 안에서 블루투스로 열람실 장치에 연결하세요'
+        : '📵 블루투스로 자리를 확인하면 자리에 있는 동안 자동 연장돼요', 'presence-off');
+      btn(reserved ? '블루투스로 착석 확인 켜기' : '블루투스로 자리 확인 켜기', () => webBle.start());
     }
     box.append(el('span', 'presence-note', '화면을 켜 둔 동안 동작해요 · 열람실 장치(LIB-SEAT-PI)를 선택하세요'));
     return box;
   }
 
-  /** 상태 카드 안의 재실 확인 안내 (열람실 A 이용 중일 때만) */
+  /** 상태 카드 안의 블루투스 안내 (장치가 있는 열람실에서 예약 중·이용 중일 때만) */
   function presenceChip(mine) {
     if (!PRESENCE_ROOMS.includes(mine.room)) return null;
+    const reserved = mine.state === 'reserved';
     if (!IN_APP) {
-      if (webBle) return webPresenceBox();
+      if (webBle) return webPresenceBox(reserved);
       const why = WEB_BLE_SUPPORT === 'insecure' ? '' : ' (이 브라우저는 블루투스를 지원하지 않아요 · Android Chrome 에서 가능)';
+      if (reserved) return el('span', 'chip-glass presence-off', `📵 이 화면에서는 착석 확인을 할 수 없어요${why}. 모바일 앱이나 입구 키오스크에서 착석하세요.`);
       return el('span', 'chip-glass', `📱 모바일 앱을 켜 두면 자리에 있는 동안 자동 연장돼요${why}`);
     }
     const p = state.appPresence;
     if (!p) return el('span', 'chip-glass', '📶 블루투스 확인 준비 중…');
+    if (reserved) {
+      if (p.inRange) return el('span', 'chip-glass presence-ok', `📶 열람실 안에 있어요${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 착석할 수 있어요`);
+      if (p.piConnected) return el('span', 'chip-glass presence-weak', `📶 신호 약함${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 자리에 더 가까이 가면 착석할 수 있어요`);
+      return el('span', 'chip-glass presence-off', '📵 열람실 장치를 찾는 중 · 열람실 안에서 착석할 수 있어요');
+    }
     if (p.inRange) return el('span', 'chip-glass presence-ok', `📶 자리 확인됨${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 남은 시간이 2시간 아래로 줄지 않아요`);
     if (p.piConnected) return el('span', 'chip-glass presence-weak', `📶 신호 약함${p.rssi != null ? ` (${p.rssi} dBm)` : ''} · 시간이 줄어들고 있어요`);
     // 자세한 이유(권한·검색 실패 등)는 앱 상단 바에 표시된다
@@ -670,8 +708,13 @@ export function renderPersonalHome(root) {
         right.append(el('div', 'k', '착석까지'), liveCountdown(mine.expires_at, 'div', 'countdown', URGENT_MS));
         top.append(left, right);
         box.append(top, el('div', 'd', `${formatTime(mine.expires_at)}까지 착석하지 않으면 예약이 자동 취소됩니다.`));
+        const chip = presenceChip(mine); // 블루투스 착석 확인 (장치가 있는 열람실만)
+        if (chip) box.append(chip);
+        const gate = checkInGate(mine);
+        const checkIn = actionButton(gate.ok ? '착석했어요' : '열람실 안에서 착석', 'hbtn w', () => openHours(mine), !gate.ok);
+        if (!gate.ok) checkIn.title = '열람실 장치와 블루투스로 연결되어 거리 안에 있어야 착석할 수 있어요';
         btns.append(
-          actionButton('착석했어요', 'hbtn w', () => openHours(mine)),
+          checkIn,
           actionButton('예약 취소', 'hbtn g', () => confirmCancel(mine)),
         );
       } else if (mine.state === 'occupied') {
@@ -781,14 +824,6 @@ export function renderPersonalHome(root) {
   }
 
   // ----- 내 이용 탭 -----
-  function soonCard(title, note) {
-    const card = el('section', 'card');
-    const h = el('div', 'card-title', title);
-    h.append(el('span', 'soon', '기능 추가 예정'));
-    card.append(h, el('p', 'note', note));
-    return card;
-  }
-
   function renderMe() {
     meBody.replaceChildren();
     if (!state.user) {
@@ -818,22 +853,12 @@ export function renderPersonalHome(root) {
       now.append(el('p', 'note', '이용 중인 좌석이 없어요. 좌석 탭에서 예약할 수 있어요.'));
     }
 
-    const stats = el('div', 'stats');
-    for (const label of ['이용 횟수', '누적 공부 시간']) {
-      const stat = el('div', 'stat');
-      const k = el('div', 'k', label);
-      k.append(el('span', 'soon', '추가 예정'));
-      stat.append(k, el('div', 'v', '—'));
-      stats.append(stat);
-    }
-
     meBody.append(
       now,
-      stats,
-      soonCard('자주 앉는 자리', '이용 기록을 바탕으로 자주 앉는 자리와 비슷한 조건의 빈자리를 추천하는 기능은 추가 예정입니다.'),
-      soonCard('최근 이용', '날짜별 이용 기록(좌석, 시작 시각, 이용 시간)을 보여 주는 기능은 추가 예정입니다.'),
+      studyPanel.element, // 같은 요소를 다시 붙인다 (다시 그려도 불러온 기록 유지)
       actionButton('로그아웃', 'cta ghost', () => logout(true)),
     );
+    if (state.tab === 'me') { studyPanel.load(studyDirty); studyDirty = false; }
   }
 
   // ----- 탭 전환 -----
@@ -843,6 +868,7 @@ export function renderPersonalHome(root) {
     seatsView.hidden = tab !== 'seats';
     centralView.hidden = tab !== 'central';
     meView.hidden = tab !== 'me';
+    if (tab === 'me' && state.user) { studyPanel.load(studyDirty); studyDirty = false; }
     for (const [key, b] of Object.entries(tabButtons)) {
       b.classList.toggle('on', key === tab);
       if (key === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
@@ -911,12 +937,19 @@ export function renderPersonalHome(root) {
       if (!state.user || mine?.reservation_id !== c.reservationId || mine.state !== 'reserved') { closeSheet(); return; }
       const title = el('div', 'sh-title');
       title.append(el('b', 'small', '몇 시간 이용할까요?'));
+      const gate = checkInGate(mine);
       const grid = el('div', 'hours-grid');
       for (const h of USAGE_HOUR_CHOICES) {
         grid.append(actionButton(`${h}시간`, 'cta', async () => {
+          // 누르는 순간에도 다시 확인 (그사이 블루투스가 끊겼을 수 있음)
+          if (!checkInGate(mySeat()).ok) {
+            showMessage('열람실 장치와 블루투스 연결이 끊겼어요. 열람실 안에서 다시 시도하세요.', 'error');
+            renderSheet();
+            return;
+          }
           const ok = await runAction(() => api.checkIn(c.reservationId, h), `착석 처리되었습니다. ${h}시간 이용할 수 있어요.`);
           if (ok) closeSheet();
-        }));
+        }, !gate.ok));
       }
       const actions = el('div', 'actions');
       actions.append(actionButton('돌아가기', 'cta ghost', () => closeSheet()));
@@ -924,6 +957,7 @@ export function renderPersonalHome(root) {
         title,
         el('div', 'sh-sub', `${roomName(mine.room)} ${mine.label} 좌석 · 시간이 끝나면 자동으로 퇴실돼요. [퇴실]로 언제든 먼저 끝낼 수 있어요.`),
         grid,
+        ...(gate.ok ? [] : [el('p', 'form-error', '블루투스로 열람실 안에 있는 것이 확인되어야 착석할 수 있어요.')]),
         actions,
       );
       return;

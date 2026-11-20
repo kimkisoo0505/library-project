@@ -600,3 +600,32 @@ h2 { font-size: 1.1rem; }
 /* 관리자 화면 상단 [개인 사용 | 키오스크 | 관리자]: 페이지 배경과 같은 색이라 조금 진하게 */
 .page-header .mode-toggle { background: #e4e8ee; }
 .page-header .mode-toggle button.on { color: var(--kg); }
+
+/* ---------- 이용 통계 (components/stats-panel.js) ---------- */
+/* 한 계열 그래프 → 한 색(--kg). 값 숫자는 최댓값 막대에만, 나머지는 마우스/포커스 시 위 안내줄에 표시 */
+.stats-panel { display: flex; flex-direction: column; gap: 14px; }
+.stats-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.stats-head h2 { margin: 0; }
+.stats-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stats-periods { display: flex; gap: 4px; }
+.stats-panel .hint { margin: 0; }
+.stats-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.stats-tile { background: var(--bg); border-radius: var(--r-md); padding: 14px; min-width: 0; }
+.stats-tile .k { font-size: 12.5px; color: var(--sub); }
+.stats-tile .v { font-size: 22px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stats-tile .s { font-size: 12px; color: var(--sub); margin-top: 2px; }
+.stats-block h3 { margin: 4px 0 6px; font-size: 15px; }
+.stats-readout { font-size: 12.5px; color: var(--ink2); min-height: 18px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.stats-chart { display: grid; gap: 2px; height: 160px; }
+.stats-col {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0;
+  background: none; border: 0; font: inherit; color: inherit; cursor: pointer; border-radius: 4px;
+}
+.stats-col:focus-visible { outline: 3px solid var(--kg); outline-offset: 1px; }
+.stats-track { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; border-bottom: 1px solid var(--line); }
+.stats-bar { display: block; width: 70%; max-width: 32px; background: var(--kg); opacity: 0.6; border-radius: 4px 4px 0 0; }
+.stats-col:hover .stats-bar, .stats-col.is-active .stats-bar { opacity: 1; }
+.stats-val { font-size: 11px; font-weight: 700; color: var(--ink2); margin-bottom: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stats-axis { font-size: 10.5px; color: var(--sub); text-align: center; min-height: 14px; white-space: nowrap; overflow: visible; }
+.stats-table td:not(:first-child), .stats-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.stats-panel > .btn { align-self: flex-start; }

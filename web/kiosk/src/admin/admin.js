@@ -14,6 +14,7 @@ import { TEST_ADMIN } from '../common/test-accounts.js';
 import { MODES, MODE_LABELS, switchMode } from '../common/usage-mode.js';
 import { createLayoutEditor } from './components/layout-editor.js';
 import { createLocationPicker } from './components/location-picker.js';
+import { createAdminStatsPanel } from './components/stats-panel.js';
 
 const ROOM_PREF_KEY = 'library.admin.room';
 
@@ -90,9 +91,13 @@ export function renderAdmin(root) {
     if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
       session.clear('admin');
       state.admin = null;
+      statsPanel.clear();
       render();
     }
   }
+
+  // 이용 통계: 한 번 만들어 두고 다시 그릴 때 같은 요소를 붙인다 (좌석 실시간 갱신마다 다시 부르지 않음)
+  const statsPanel = createAdminStatsPanel({ onError: (err) => handleError(err) });
 
   // 좌석 배치 편집기 (드래그 중에는 화면을 다시 그리지 않도록 새로고침을 미룬다)
   let refreshPending = false;
@@ -340,9 +345,11 @@ export function renderAdmin(root) {
         try { await api.logout('admin'); } catch { /* 로컬 토큰만 제거 */ }
         session.clear('admin');
         state.admin = null;
+        statsPanel.clear();
         render();
       }),
     );
+    if (!statsPanel.loaded) statsPanel.load(); // 로그인 후 처음 한 번
 
     const seatSection = el('section', 'card');
     roomTabs.update(state.rooms, state.room);
@@ -352,7 +359,7 @@ export function renderAdmin(root) {
     deviceSection.append(el('h2', null, '현장 장치'), renderDevices());
     const eventSection = el('section', 'card');
     eventSection.append(el('h2', null, '최근 이벤트 (50건)'), button('새로고침', 'btn-ghost', refresh), renderEvents());
-    content.append(deviceSection, seatSection, eventSection);
+    content.append(deviceSection, statsPanel.element, seatSection, eventSection);
   }
 
   const socket = new SeatSocket({
