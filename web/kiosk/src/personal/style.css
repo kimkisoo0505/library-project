@@ -613,3 +613,6 @@ h2 { font-size: 1.1rem; }
 .status-toggle[aria-expanded='true'] { color: var(--kg); border-color: var(--kg); }
 .status-toggle:focus-visible { outline: 3px solid var(--kg); outline-offset: 2px; }
 .page-footer .system-status { width: 100%; max-width: 640px; text-align: left; }
+
+/* 내 이용 탭: 알림 설정 카드 */
+.notify-card .btn.cta { margin-top: 12px; width: 100%; }

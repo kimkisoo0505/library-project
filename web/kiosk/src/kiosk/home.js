@@ -17,6 +17,11 @@ import { createRoomTabs, roomPreference } from './components/room-tabs.js';
 import { createCentralLibraryPanel, congestionLevel, createLevelPill } from './components/central-library.js';
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from './components/system-status.js';
 import { createStudyStatsPanel } from '../common/study-stats.js';
+import { createPopup } from '../common/popup.js';
+import { reservedAlert, checkedInAlert, checkedOutAlert, cancelledAlert } from '../common/seat-alerts.js';
+
+/** 공용 키오스크: 완료 팝업은 다음 사람을 위해 저절로 닫힌다. 브라우저 알림은 보내지 않는다(공용 기기). */
+const POPUP_AUTO_CLOSE_MS = 8_000;
 
 const SYSTEM_STATUS_POLL_MS = 15_000;
 
@@ -258,7 +263,8 @@ export function renderKioskHome(root) {
   const sheetBody = el('div');
   sheet.append(el('div', 'grab'), sheetBody);
 
-  root.append(header, seatsView, centralView, meView, tabbar, scrim, sheet, message);
+  const popup = createPopup(); // 주요 동작 완료 팝업
+  root.append(header, seatsView, centralView, meView, tabbar, scrim, sheet, message, popup.element);
 
   async function loadSystemStatus() {
     if (!systemStatus) return;
@@ -423,6 +429,7 @@ export function renderKioskHome(root) {
     state.selectedSeatId = null;
     studyPanel.clear();
     studyDirty = true;
+    popup.clear();
     seatMap.setSelected(null);
     closeSheet();
     setTab('seats');
@@ -430,17 +437,21 @@ export function renderKioskHome(root) {
     await loadSeats();
   }
 
-  /** @returns {Promise<boolean>} 서버가 요청을 성공 처리했는지 */
-  async function runAction(action, successText) {
+  /**
+   * @param {string | ((data: any) => object)} success 문자열이면 짧은 안내(토스트), 함수면 응답으로 만든 팝업
+   * @returns {Promise<boolean>} 서버가 요청을 성공 처리했는지
+   */
+  async function runAction(action, success) {
     if (state.busy) return false;
     state.busy = true;
     renderPanel();
     let ok = false;
     try {
-      await action();
+      const data = await action();
       ok = true;
       studyDirty = true;
-      showMessage(successText, 'success');
+      if (typeof success === 'function') popup.show({ ...success(data), autoCloseMs: POPUP_AUTO_CLOSE_MS });
+      else showMessage(success, 'success');
     } catch (err) {
       showMessage(err.message, 'error');
       if (err instanceof ApiError && err.status === 401) await logout(false);
@@ -488,7 +499,7 @@ export function renderKioskHome(root) {
       desc: `${roomName(mine.room)} ${mine.label} 좌석이 바로 다른 사람에게 돌아가요.`,
       confirmText: '예약 취소하기',
       run: () => api.cancelReservation(mine.reservation_id),
-      successText: '예약이 취소되었습니다.',
+      success: () => cancelledAlert({ label: mine.label, roomName: roomName(mine.room) }),
     });
   }
 
@@ -499,7 +510,7 @@ export function renderKioskHome(root) {
       desc: '퇴실하면 자리가 바로 다른 사람에게 돌아가요.',
       confirmText: '퇴실하기',
       run: () => api.checkOut(mine.reservation_id),
-      successText: '퇴실 처리되었습니다.',
+      success: () => checkedOutAlert({ label: mine.label, roomName: roomName(mine.room) }),
     });
   }
 
@@ -766,7 +777,10 @@ export function renderKioskHome(root) {
       const grid = el('div', 'hours-grid');
       for (const h of USAGE_HOUR_CHOICES) {
         grid.append(actionButton(`${h}시간`, 'cta', async () => {
-          const ok = await runAction(() => api.checkIn(c.reservationId, h), `착석 처리되었습니다. ${h}시간 이용할 수 있어요.`);
+          const ok = await runAction(
+            () => api.checkIn(c.reservationId, h),
+            (data) => checkedInAlert({ label: mine.label, roomName: roomName(mine.room), hours: h, usageEndsAt: data?.reservation?.usage_ends_at }),
+          );
           if (ok) closeSheet();
         }));
       }
@@ -789,7 +803,7 @@ export function renderKioskHome(root) {
       const actions = el('div', 'actions');
       actions.append(
         actionButton(c.confirmText, 'cta danger', async () => {
-          await runAction(c.run, c.successText);
+          await runAction(c.run, c.success);
           closeSheet();
         }),
         actionButton('돌아가기', 'cta ghost', () => closeSheet()),
@@ -833,7 +847,10 @@ export function renderKioskHome(root) {
         `${seat.label} 예약하기`,
         'cta',
         async () => {
-          const ok = await runAction(() => api.createReservation(seat.id), `${roomName(seat.room)} ${seat.label} 좌석이 예약되었습니다.`);
+          const ok = await runAction(
+            () => api.createReservation(seat.id),
+            (data) => reservedAlert({ label: seat.label, roomName: roomName(seat.room), expiresAt: data?.reservation?.expires_at }),
+          );
           if (ok) { closeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
         },
         offline,

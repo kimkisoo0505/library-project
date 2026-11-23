@@ -24,6 +24,14 @@ import { createNearbyCard } from './components/nearby-card.js';
 import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from './app-bridge.js';
 import { createWebBlePresence, webBleSupport } from './web-ble.js';
 import { createStudyStatsPanel } from '../common/study-stats.js';
+import { createPopup } from '../common/popup.js';
+import {
+  notifySupport, notifyPermission, notifyEnabled, enableNotify, disableNotify, browserNotify, warmUpNotify,
+} from '../common/browser-notify.js';
+import {
+  mineSnapshot, detectChange, dueWarning, reservedAlert, checkedInAlert, checkedOutAlert, cancelledAlert,
+  remoteCheckInAlert, endedAlert,
+} from '../common/seat-alerts.js';
 
 /** 앱 모드: 재실 확인을 서버에 보내는 최소 간격 (서버는 남은 시간을 2시간으로 유지) */
 const PRESENCE_REPORT_MS = 60_000;
@@ -278,7 +286,78 @@ export function renderPersonalHome(root) {
   const sheetBody = el('div');
   sheet.append(el('div', 'grab'), sheetBody);
 
-  root.append(header, seatsView, centralView, meView, tabbar, scrim, sheet, message);
+  // 주요 동작 알림 팝업 (+ 다른 화면을 보고 있으면 브라우저 알림)
+  const popup = createPopup();
+  root.append(header, seatsView, centralView, meView, tabbar, scrim, sheet, message, popup.element);
+
+  /** 팝업을 띄우고, 이 화면을 보고 있지 않으면 브라우저 알림도 보낸다 */
+  function announce(item) {
+    popup.show(item);
+    browserNotify(item);
+  }
+
+  // 서버(또는 다른 기기)가 바꾼 내 좌석 상태 감지용
+  let prevMine = null;          // 직전 조회의 내 좌석
+  let alertsReady = false;      // 로그인 후 첫 조회는 기준값만 잡는다 (화면을 열자마자 옛 변화로 팝업 X)
+  const handled = new Map();    // 예약 id → 'occupied' | 'ended' (이 화면에서 직접 했거나 이미 알린 변화)
+  const firedWarnings = new Set();
+
+  function resetAlerts() {
+    prevMine = null;
+    alertsReady = false;
+    handled.clear();
+    firedWarnings.clear();
+    popup.clear();
+  }
+
+  /** 좌석을 다시 불러올 때마다: 이전과 비교해 서버가 바꾼 변화를 알린다 */
+  function checkSeatChange() {
+    if (!state.user) { prevMine = null; alertsReady = false; return; }
+    const next = mineSnapshot(mySeat());
+    const change = alertsReady ? detectChange(prevMine, next, handled) : null;
+    prevMine = next;
+    alertsReady = true;
+    if (!change) return;
+    const snap = change.snap;
+    if (change.type === 'checked_in') {
+      handled.set(snap.id, 'occupied');
+      announce(remoteCheckInAlert(snap, roomName(snap.room)));
+      return;
+    }
+    handled.set(snap.id, 'ended');
+    // 끝난 이유(미착석 자동 취소·시간 종료·관리자 해제 …)는 이용 기록에서 확인한다
+    api.myHistory(5)
+      .then((res) => res?.history?.find((h) => h.id === snap.id)?.end_reason ?? null)
+      .catch(() => null)
+      .then((reason) => { if (state.user) announce(endedAlert(snap, roomName(snap.room), reason)); });
+  }
+
+  /** 1초마다: 착석 마감 5분 전 · 이용 종료 10분 전 경고 */
+  function checkWarnings() {
+    if (!state.user) return;
+    const mine = mySeat();
+    const warning = dueWarning(mineSnapshot(mine), Date.now(), firedWarnings, {
+      roomName: mine ? roomName(mine.room) : '',
+      presenceRoom: Boolean(mine && PRESENCE_ROOMS.includes(mine.room)),
+    });
+    if (!warning) return;
+    firedWarnings.add(warning.key);
+    announce(warning);
+  }
+
+  /** 예약 완료 팝업의 [알림 받기] (아직 브라우저 알림을 켜지 않았을 때만) */
+  function notifyOffer() {
+    if (notifySupport() !== 'ok' || notifyEnabled() || notifyPermission() === 'denied') return undefined;
+    return { label: '알림 받기', run: turnOnNotify };
+  }
+
+  async function turnOnNotify() {
+    const result = await enableNotify();
+    if (result === 'granted') showMessage('브라우저 알림을 켰어요. 다른 화면을 보고 있어도 알려 드려요.', 'success');
+    else if (result === 'denied') showMessage('알림이 차단되어 있어요. 브라우저 사이트 설정에서 알림을 허용해 주세요.', 'error');
+    else if (result === 'failed') showMessage('알림을 보내지 못했어요. 브라우저 설정을 확인해 주세요.', 'error');
+    renderMe();
+  }
 
   async function loadSystemStatus() {
     if (!systemStatus) return;
@@ -415,6 +494,7 @@ export function renderPersonalHome(root) {
       }
       if (!seatsInRoom().some((s) => s.id === state.selectedSeatId)) state.selectedSeatId = null;
       renderMap();
+      checkSeatChange();
     } catch (err) {
       state.loadFailed = true;
       showMessage(err.message, 'error');
@@ -442,6 +522,7 @@ export function renderPersonalHome(root) {
     state.selectedSeatId = null;
     studyPanel.clear();
     studyDirty = true;
+    resetAlerts();
     seatMap.setSelected(null);
     closeSheet();
     setTab('seats');
@@ -449,18 +530,28 @@ export function renderPersonalHome(root) {
     await loadSeats();
   }
 
-  /** @returns {Promise<boolean>} 서버가 요청을 성공 처리했는지 */
-  async function runAction(action, successText) {
+  /**
+   * @param {() => Promise<any>} action
+   * @param {string | ((data: any) => object)} success 문자열이면 짧은 안내(토스트), 함수면 응답으로 만든 팝업
+   * @param {{ expect?: [number, 'occupied' | 'ended'] }} [options] 이 동작으로 바뀔 내 예약 (서버 변화 팝업과 겹치지 않게)
+   * @returns {Promise<boolean>} 서버가 요청을 성공 처리했는지
+   */
+  async function runAction(action, success, { expect } = {}) {
     if (state.busy) return false;
     state.busy = true;
     renderPanel();
     let ok = false;
+    // 실시간 갱신이 응답보다 먼저 올 수 있으므로 요청 전에 표시해 둔다
+    const hadExpect = expect ? handled.get(expect[0]) : undefined;
+    if (expect) handled.set(expect[0], expect[1]);
     try {
-      await action();
+      const data = await action();
       ok = true;
       studyDirty = true;
-      showMessage(successText, 'success');
+      if (typeof success === 'function') announce(success(data));
+      else showMessage(success, 'success');
     } catch (err) {
+      if (expect) { if (hadExpect === undefined) handled.delete(expect[0]); else handled.set(expect[0], hadExpect); }
       showMessage(err.message, 'error');
       if (err instanceof ApiError && err.status === 401) await logout(false);
     } finally {
@@ -653,7 +744,8 @@ export function renderPersonalHome(root) {
       desc: `${roomName(mine.room)} ${mine.label} 좌석이 바로 다른 사람에게 돌아가요.`,
       confirmText: '예약 취소하기',
       run: () => api.cancelReservation(mine.reservation_id),
-      successText: '예약이 취소되었습니다.',
+      success: () => cancelledAlert({ label: mine.label, roomName: roomName(mine.room) }),
+      expect: [mine.reservation_id, 'ended'],
     });
   }
 
@@ -664,7 +756,8 @@ export function renderPersonalHome(root) {
       desc: '퇴실하면 자리가 바로 다른 사람에게 돌아가요.',
       confirmText: '퇴실하기',
       run: () => api.checkOut(mine.reservation_id),
-      successText: '퇴실 처리되었습니다.',
+      success: () => checkedOutAlert({ label: mine.label, roomName: roomName(mine.room) }),
+      expect: [mine.reservation_id, 'ended'],
     });
   }
 
@@ -757,6 +850,7 @@ export function renderPersonalHome(root) {
   }
 
   function updateCountdown() {
+    checkWarnings();
     let anyExpired = false;
     for (const c of liveCountdowns) {
       if (!c.node.isConnected) { liveCountdowns.delete(c); continue; }
@@ -824,6 +918,34 @@ export function renderPersonalHome(root) {
   }
 
   // ----- 내 이용 탭 -----
+  /** 내 이용 탭: 브라우저 알림 켜기/끄기 */
+  function notifyCard() {
+    const card = el('section', 'card notify-card');
+    card.append(el('div', 'card-title', '알림'));
+    const support = notifySupport();
+    const note = (text) => card.append(el('p', 'note', text));
+    if (support === 'app') {
+      note('예약·착석·자동 취소·이용 종료는 화면 팝업으로 알려 드려요. (앱 알림은 아직 지원하지 않아요)');
+      return card;
+    }
+    if (support !== 'ok') {
+      note('이 브라우저는 알림을 지원하지 않아요. 화면 팝업으로 알려 드려요. (Android Chrome·PC 브라우저에서 가능)');
+      return card;
+    }
+    const permission = notifyPermission();
+    if (notifyEnabled()) {
+      note('브라우저 알림 켜짐 · 다른 탭이나 앱을 보고 있을 때 예약·착석·자동 취소·이용 종료를 알려 드려요. 이 화면이 열려 있는 동안만 동작해요.');
+      card.append(actionButton('브라우저 알림 끄기', 'cta ghost', () => { disableNotify(); renderMe(); }));
+    } else if (permission === 'denied') {
+      note('알림이 차단되어 있어요. 주소창 옆 사이트 설정에서 알림을 허용한 뒤 다시 눌러 주세요.');
+      card.append(actionButton('다시 시도', 'cta ghost', turnOnNotify));
+    } else {
+      note('켜 두면 다른 탭이나 앱을 보고 있을 때도 착석 마감 5분 전, 이용 종료 10분 전, 자동 취소·퇴실을 알려 드려요.');
+      card.append(actionButton('브라우저 알림 켜기', 'cta', turnOnNotify));
+    }
+    return card;
+  }
+
   function renderMe() {
     meBody.replaceChildren();
     if (!state.user) {
@@ -855,6 +977,7 @@ export function renderPersonalHome(root) {
 
     meBody.append(
       now,
+      notifyCard(),
       studyPanel.element, // 같은 요소를 다시 붙인다 (다시 그려도 불러온 기록 유지)
       actionButton('로그아웃', 'cta ghost', () => logout(true)),
     );
@@ -947,7 +1070,11 @@ export function renderPersonalHome(root) {
             renderSheet();
             return;
           }
-          const ok = await runAction(() => api.checkIn(c.reservationId, h), `착석 처리되었습니다. ${h}시간 이용할 수 있어요.`);
+          const ok = await runAction(
+            () => api.checkIn(c.reservationId, h),
+            (data) => checkedInAlert({ label: mine.label, roomName: roomName(mine.room), hours: h, usageEndsAt: data?.reservation?.usage_ends_at }),
+            { expect: [c.reservationId, 'occupied'] },
+          );
           if (ok) closeSheet();
         }, !gate.ok));
       }
@@ -971,7 +1098,7 @@ export function renderPersonalHome(root) {
       const actions = el('div', 'actions');
       actions.append(
         actionButton(c.confirmText, 'cta danger', async () => {
-          await runAction(c.run, c.successText);
+          await runAction(c.run, c.success, { expect: c.expect });
           closeSheet();
         }),
         actionButton('돌아가기', 'cta ghost', () => closeSheet()),
@@ -1015,7 +1142,13 @@ export function renderPersonalHome(root) {
         `${seat.label} 예약하기`,
         'cta',
         async () => {
-          const ok = await runAction(() => api.createReservation(seat.id), `${roomName(seat.room)} ${seat.label} 좌석이 예약되었습니다.`);
+          const ok = await runAction(
+            () => api.createReservation(seat.id),
+            (data) => ({
+              ...reservedAlert({ label: seat.label, roomName: roomName(seat.room), expiresAt: data?.reservation?.expires_at }),
+              action: notifyOffer(),
+            }),
+          );
           if (ok) { closeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
         },
         offline,
@@ -1055,6 +1188,7 @@ export function renderPersonalHome(root) {
   renderRoomHead();
   renderCentralExtras();
   renderPanel();
+  warmUpNotify();
   restoreUser().then(() => loadSeats());
 
   return () => {
