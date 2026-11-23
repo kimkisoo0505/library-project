@@ -66,7 +66,7 @@ Arduino ──BTN,1,PRESS──▶ 에이전트
 
 ### 3.6 중앙도서관 · 금화도서관 공석 (외부 연동)
 ```
-라즈베리파이 ──(1분마다, 인증서 검증 ON)──▶ libgate.kyonggi.ac.kr
+라즈베리파이 ──(30초마다, 인증서 검증 ON)──▶ libgate.kyonggi.ac.kr
      └──POST /api/device/central-library (장치 토큰)──▶ Workers ──▶ D1 external_snapshots
 키오스크 ──GET /api/central-library──▶ Workers (D1 에서 읽기만 함)
 ```

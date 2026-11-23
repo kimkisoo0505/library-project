@@ -80,7 +80,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 다른 학생의 식별 정보는 포함되지 않습니다.
 
 ### `GET /central-library` — 경기대 중앙도서관(수원) · 금화도서관(서울) 공석 (인증 불필요)
-출처 `libgate.kyonggi.ac.kr/libraries/lib-status/{1|2}`를 서버가 대신 조회하여 D1에 1분 단위로 캐시합니다.
+출처 `libgate.kyonggi.ac.kr/libraries/lib-status/{1|2}`를 서버가 대신 조회하여 D1에 30초 단위로 캐시합니다.
 이용자 요청마다 학교 서버를 호출하지 않으며, 동시에 여러 요청이 와도 외부 호출은 1건입니다.
 ```json
 {
@@ -172,7 +172,7 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
 응답 `202 { "accepted": true, "action": "logged_only" }` — 현재는 기록만 하며 좌석 상태를 바꾸지 않습니다.
 
 ### `POST /device/central-library` — 중앙/금화도서관 공석 중계 (장치 토큰)
-라즈베리파이가 1분마다 libgate 를 **인증서 검증을 켠 채로** 조회해 원본을 올립니다.
+라즈베리파이가 30초마다 libgate 를 **인증서 검증을 켠 채로** 조회해 원본을 올립니다.
 서버는 장치 입력도 다시 검증·정규화합니다 (모르는 캠퍼스·중복·형식 오류 무시, 실패한 캠퍼스는 이전 결과 유지).
 ```json
 { "campuses": [ { "id": 1, "data": [ { "code": 8, "name": "...", "cnt": 50, "available": 12, "inUse": 38, "fix": 0, "startTm": "0600", "endTm": "2400" } ] } ],

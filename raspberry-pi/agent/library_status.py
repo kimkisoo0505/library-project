@@ -6,7 +6,7 @@
     (certs/rapidssl-tls-rsa-ca-g1.pem, DigiCert Global Root G2 발급)를 함께 신뢰 목록에 넣어
     **인증서 검증을 끄지 않고** 정상 조회한 뒤, 결과를 우리 서버로 올린다.
 
-부하 배려: 1분(최소 30초) 간격, 두 캠퍼스 각 1회. 클라우드가 오프라인이면 조회하지 않는다.
+부하 배려: 30초(최소 30초) 간격, 두 캠퍼스 각 1회. 클라우드가 오프라인이면 조회하지 않는다.
 서버는 올라온 데이터도 다시 검증/정규화한다.
 """
 
@@ -60,7 +60,7 @@ class LibraryStatusRelay:
         self,
         cloud: RelayCloud,
         *,
-        interval_seconds: float = 60.0,
+        interval_seconds: float = 30.0,
         is_online: Callable[[], bool] = lambda: True,
         client_factory: Callable[[], Any] | None = None,
     ) -> None:

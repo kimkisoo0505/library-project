@@ -50,7 +50,7 @@ class AgentConfig:
     allow_remote_shutdown: bool = False
     # 경기대 중앙/금화도서관 공석 중계
     central_library_relay: bool = False
-    central_library_interval_seconds: float = 60.0
+    central_library_interval_seconds: float = 30.0
     # 아두이노가 담당하는 열람실 LCD: ((열람실, 시리얼 포트), ...). 비어 있으면 사용 안 함
     # (아두이노 관련 코드는 agent/arduino_rooms.py 에 분리되어 있음)
     arduino_rooms: tuple[tuple[str, str], ...] = ()
@@ -269,7 +269,7 @@ def load_config(env: Mapping[str, str] | None = None) -> AgentConfig:
         central_library_relay=_get_bool(source, "CENTRAL_LIBRARY_RELAY", False),
         # 학교 서버 부담을 고려해 30초 미만으로는 설정할 수 없다
         central_library_interval_seconds=_get_number(
-            source, "CENTRAL_LIBRARY_INTERVAL_SECONDS", 60.0, minimum=30, maximum=3600
+            source, "CENTRAL_LIBRARY_INTERVAL_SECONDS", 30.0, minimum=30, maximum=3600
         ),
         arduino_rooms=arduino_rooms,
     )

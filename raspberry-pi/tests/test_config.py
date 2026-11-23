@@ -72,7 +72,7 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual((config.lcd_color_normal, config.lcd_color_offline), ((0, 255, 0), (255, 0, 0)))
         self.assertEqual((config.lcd_welcome_seconds, config.lcd_erase_step_seconds), (2.0, 0.15))
         self.assertFalse(config.central_library_relay)
-        self.assertEqual(config.central_library_interval_seconds, 60.0)
+        self.assertEqual(config.central_library_interval_seconds, 30.0)
 
     def test_room_lcd_and_relay_overrides(self) -> None:
         config = load_config(base_env(DEVICE_ROOM="b", LCD_ENABLED="true", LCD_I2C_ADDRESS="0x27",

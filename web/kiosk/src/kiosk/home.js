@@ -25,7 +25,7 @@ const POPUP_AUTO_CLOSE_MS = 8_000;
 
 const SYSTEM_STATUS_POLL_MS = 15_000;
 
-const CENTRAL_LIBRARY_POLL_MS = 60_000;
+const CENTRAL_LIBRARY_POLL_MS = 30_000;
 
 const ROOM_PREF_KEY = 'library.kiosk.room';
 
@@ -218,7 +218,7 @@ export function renderKioskHome(root) {
   const centralView = el('main', 'view page view-central');
   centralView.hidden = true;
   const centralHead = el('div');
-  centralHead.append(el('div', 'sec-title', '중앙도서관 혼잡도'), el('div', 'sec-sub', '경기대 도서관 좌석 현황을 1분마다 받아와요'));
+  centralHead.append(el('div', 'sec-title', '중앙도서관 혼잡도'), el('div', 'sec-sub', '경기대 도서관 좌석 현황을 30초마다 받아와요'));
   const tip = el('button', 'tip');
   tip.type = 'button';
   tip.hidden = true;

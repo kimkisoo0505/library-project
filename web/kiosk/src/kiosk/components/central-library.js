@@ -1,6 +1,6 @@
 /**
  * 경기대 중앙도서관(수원) / 금화도서관(서울) 공석 현황 패널
- * 데이터는 우리 API(/api/central-library)가 1분 단위로 캐시한 값이며, 외부 데이터이므로 textContent 로만 표시한다.
+ * 데이터는 우리 API(/api/central-library)가 30초 단위로 캐시한 값이며, 외부 데이터이므로 textContent 로만 표시한다.
  * 혼잡도 표시는 화면용 계산일 뿐이다 (사용률 90% 이상 혼잡, 50% 이상 보통, 미만 여유).
  */
 function el(tag, className, text) {
@@ -99,7 +99,7 @@ export function createCentralLibraryPanel() {
   const element = el('section', 'central-library');
   element.setAttribute('aria-label', '중앙도서관 · 금화도서관 공석 현황');
   const body = el('div', 'central-library');
-  const footer = el('p', 'updated', '출처: 경기대학교 도서관 좌석 현황 (1분 단위 갱신)');
+  const footer = el('p', 'updated', '출처: 경기대학교 도서관 좌석 현황 (30초 단위 갱신)');
   element.append(body, footer);
   body.append(el('div', 'card hint', '불러오는 중…'));
 
@@ -107,7 +107,7 @@ export function createCentralLibraryPanel() {
 
   function setFooter(fetchedAt) {
     const ago = fetchedAt ? agoText(fetchedAt) : '';
-    footer.textContent = `${ago ? `${ago} · ` : ''}출처: 경기대학교 도서관 좌석 현황 (1분 단위 갱신)`;
+    footer.textContent = `${ago ? `${ago} · ` : ''}출처: 경기대학교 도서관 좌석 현황 (30초 단위 갱신)`;
   }
 
   return {

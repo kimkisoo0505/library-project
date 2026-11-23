@@ -34,7 +34,7 @@ export const CAMPUSES = Object.freeze([
   { id: 2, campus: '서울캠퍼스', library: '금화도서관' },
 ]);
 
-const FRESH_MS = 60_000;          // 이보다 오래된 결과는 갱신 시도
+const FRESH_MS = 30_000;          // 이보다 오래된 결과는 갱신 시도
 const CLAIM_MS = 20_000;          // 갱신 시도 간 최소 간격 (실패 시 재시도 간격 포함)
 const STALE_MS = 10 * 60_000;     // 이보다 오래되면 화면에 "오래된 정보"로 표시
 const TIMEOUT_MS = 6_000;
@@ -261,6 +261,6 @@ export async function handleCentralLibrary({ env, ctx }) {
       campuses: payload?.campuses ?? [],
     },
     200,
-    { 'Cache-Control': 'public, max-age=30' },
+    { 'Cache-Control': 'public, max-age=10' },
   );
 }
