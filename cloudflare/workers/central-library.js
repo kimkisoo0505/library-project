@@ -67,13 +67,15 @@ export function normalizeCampus(campus, data) {
   const rooms = data.slice(0, MAX_ROOMS).map((r) => {
     const total = toCount(r?.cnt);
     const inUse = toCount(r?.inUse);
-    const fixed = toCount(r?.fix);
+    const fixed = toCount(r?.fix) + toCount(r?.fixedSeat);
     const unavailable = toCount(r?.unavailable) + toCount(r?.disabled);
     return {
       code: toCount(r?.code),
       name: toText(r?.name) || '이름 없음',
       total,
-      available: Math.min(toCount(r?.available), total),
+      // 잔여석: 학교 좌석 페이지와 같은 계산. 학교 API 의 available 은 "이용 가능한 좌석 총수"라
+      // 사용 중인 자리가 빠져 있지 않으므로 잔여석으로 쓰면 안 된다.
+      available: Math.max(0, total - (inUse + fixed + unavailable)),
       in_use: Math.min(inUse, total),
       fixed,
       unavailable,

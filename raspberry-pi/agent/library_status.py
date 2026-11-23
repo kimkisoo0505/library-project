@@ -25,7 +25,7 @@ LIBGATE_BASE = "https://libgate.kyonggi.ac.kr"
 CAMPUSES = ((1, "중앙도서관"), (2, "금화도서관"))
 INTERMEDIATE_CERT = Path(__file__).resolve().parent / "certs" / "rapidssl-tls-rsa-ca-g1.pem"
 USER_AGENT = "KGU-Reserve-Library-Agent/0.1 (+https://library-kiosk.kimkisoo0505.workers.dev)"
-ROOM_FIELDS = ("code", "name", "cnt", "available", "inUse", "fix", "unavailable", "disabled", "startTm", "endTm")
+ROOM_FIELDS = ("code", "name", "cnt", "available", "inUse", "fix", "fixedSeat", "unavailable", "disabled", "startTm", "endTm")
 MAX_ROOMS = 50
 OFFLINE_RETRY_SECONDS = 5.0   # 클라우드 미연결로 건너뛴 경우 (예: 재시작 직후) 다시 확인하는 간격
 

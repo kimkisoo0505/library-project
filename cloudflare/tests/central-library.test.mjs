@@ -121,3 +121,15 @@ test('ingestDevicePayload: 빈/잘못된 본문', () => {
   assert.deepEqual(ingestDevicePayload({}, null), { campuses: [], errors: [], received: 0 });
   assert.deepEqual(ingestDevicePayload({ campuses: 'x', errors: 'y' }, null), { campuses: [], errors: [], received: 0 });
 });
+
+test('잔여석: 학교 페이지 계산식 (available 은 이용 가능 총수이므로 쓰지 않는다)', () => {
+  const campus = { id: 1, campus: '수원캠퍼스', library: '중앙도서관' };
+  const rooms = [
+    { code: 9, name: '개인학습', cnt: 21, available: 21, inUse: 21, fix: 0, fixedSeat: 0, unavailable: 0, disabled: 0 },
+    { code: 8, name: '플로어', cnt: 50, available: 50, inUse: 12, fix: 0, fixedSeat: 0, unavailable: 0, disabled: 0 },
+    { code: 23, name: '고정석 포함', cnt: 10, available: 5, inUse: 1, fix: 2, fixedSeat: 1, unavailable: 1, disabled: 1 },
+  ];
+  const result = normalizeCampus(campus, rooms);
+  assert.deepEqual(result.rooms.map((r) => r.available), [0, 38, 4]);
+  assert.equal(result.available, 42);
+});

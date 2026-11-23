@@ -29,14 +29,21 @@ export function createLevelPill(level) {
   return el('span', `pill p-${level}`, LEVEL_LABELS[level] ?? '');
 }
 
-function usedPercent(available, total) {
-  return total > 0 ? Math.round(((total - available) / total) * 100) : 100;
+/** 학교 페이지와 같은 사용률 기준: 사용 중 / (고정석·이용불가를 뺀 이용 가능 좌석) */
+export function seatUsage(item) {
+  const used = item.in_use ?? (item.rooms ?? []).reduce((sum, r) => sum + (r.in_use ?? 0), 0);
+  return { used, usable: used + item.available };
 }
 
-function meter(available, total) {
+function usedPercent({ used, usable }) {
+  return usable > 0 ? Math.round((used / usable) * 100) : 100;
+}
+
+function meter(item) {
+  const usage = seatUsage(item);
   const bar = el('span', 'meter');
-  const fill = el('span', `meter-fill lv-${congestionLevel(total - available, total)}`);
-  fill.style.width = `${usedPercent(available, total)}%`;
+  const fill = el('span', `meter-fill lv-${congestionLevel(usage.used, usage.usable)}`);
+  fill.style.width = `${usedPercent(usage)}%`;
   bar.append(fill);
   bar.setAttribute('aria-hidden', 'true');
   return bar;
@@ -50,7 +57,7 @@ function roomRow(room) {
   } else {
     count.append(String(room.available), el('small', null, ` / ${room.total}`));
   }
-  row.append(el('span', 'cl-room-name', room.name), meter(room.available, room.total), count);
+  row.append(el('span', 'cl-room-name', room.name), meter(room), count);
   row.setAttribute('aria-label', `${room.name} 공석 ${room.available}석 / 전체 ${room.total}석`);
   return row;
 }
@@ -66,7 +73,7 @@ function campusCard(campus, open) {
   top.append(
     el('span', 'nm', campus.library),
     el('span', 'cp', campus.campus),
-    createLevelPill(congestionLevel(campus.total - campus.available, campus.total)),
+    createLevelPill(congestionLevel(seatUsage(campus).used, seatUsage(campus).usable)),
     chev,
   );
 
@@ -74,7 +81,7 @@ function campusCard(campus, open) {
   num.append(el('b', null, String(campus.available)), el('span', null, `석 남음 · 전체 ${campus.total}석`));
 
   const meterRow = el('div', 'campus-meter');
-  meterRow.append(meter(campus.available, campus.total), el('span', 'pct', `${usedPercent(campus.available, campus.total)}% 사용`));
+  meterRow.append(meter(campus), el('span', 'pct', `${usedPercent(seatUsage(campus))}% 사용`));
 
   summary.append(top, num, meterRow);
   summary.setAttribute('aria-label', `${campus.library} ${campus.campus} 공석 ${campus.available}석 / 전체 ${campus.total}석`);

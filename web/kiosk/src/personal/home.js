@@ -18,7 +18,7 @@ import { createLoginForm } from './components/login-form.js';
 import { createSeatMap } from './components/seat-map.js';
 import { STATE_LABELS } from './components/seat-card.js';
 import { createRoomTabs, roomPreference } from './components/room-tabs.js';
-import { createCentralLibraryPanel, congestionLevel, createLevelPill } from './components/central-library.js';
+import { createCentralLibraryPanel, congestionLevel, createLevelPill, seatUsage } from './components/central-library.js';
 import { createSystemStatusBar, SHOW_SYSTEM_STATUS } from './components/system-status.js';
 import { createNearbyCard } from './components/nearby-card.js';
 import { IN_APP, PRESENCE_ROOMS, onAppPresence, postToApp } from './app-bridge.js';
@@ -890,7 +890,7 @@ export function renderPersonalHome(root) {
     ic.setAttribute('aria-hidden', 'true');
     const text = el('span');
     if (main) {
-      const level = congestionLevel(main.total - main.available, main.total);
+      const level = congestionLevel(seatUsage(main).used, seatUsage(main).usable);
       text.append(el('span', 't', `${main.library}(${String(main.campus).replace('캠퍼스', '')}) 지금`));
       const v = el('span', 'v');
       v.append(createLevelPill(level), `잔여 ${main.available}석`, el('span', 'v-total', `/ ${main.total}`));
@@ -904,7 +904,7 @@ export function renderPersonalHome(root) {
 
     const best = [...state.rooms].sort((a, b) => (Number(b.available) || 0) - (Number(a.available) || 0))[0];
     if (!main || !best) { tip.hidden = true; return; }
-    const crowded = congestionLevel(main.total - main.available, main.total) === 'bad';
+    const crowded = congestionLevel(seatUsage(main).used, seatUsage(main).usable) === 'bad';
     const tipIc = el('span', 'ic', '💡');
     tipIc.setAttribute('aria-hidden', 'true');
     const tipText = el('span');

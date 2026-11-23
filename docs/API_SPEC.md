@@ -90,14 +90,15 @@ Base URL: `https://<worker>.workers.dev/api` (로컬: `http://127.0.0.1:8787/api
   "stale": false,
   "degraded": false,
   "campuses": [
-    { "id": 1, "campus": "수원캠퍼스", "library": "중앙도서관", "total": 421, "available": 421, "fetched_at": "...",
-      "rooms": [ { "code": 8, "name": "3F 제1열람실_플로어", "total": 50, "available": 50, "in_use": 0, "fixed": 0, "unavailable": 0, "hours": "06:00~00:00" } ] },
+    { "id": 1, "campus": "수원캠퍼스", "library": "중앙도서관", "total": 421, "available": 314, "fetched_at": "...",
+      "rooms": [ { "code": 8, "name": "3F 제1열람실_플로어", "total": 50, "available": 38, "in_use": 12, "fixed": 0, "unavailable": 0, "hours": "06:00~00:00" } ] },
     { "id": 2, "campus": "서울캠퍼스", "library": "금화도서관", "total": 127, "available": 122, "rooms": [] }
   ]
 }
 ```
 - `stale`: 마지막 성공이 10분 이상 지남 / `degraded`: 최근 조회 일부·전부 실패 (사유는 관리자 이벤트 로그 `external.central_library_failed`)
 - 한 캠퍼스만 실패하면 그 캠퍼스는 이전 결과를 유지합니다.
+- `available`(잔여석) = `cnt - (inUse + unavailable + fix + disabled + fixedSeat)` — 학교 좌석 페이지와 같은 계산입니다. 학교 API 의 `available` 은 이용 가능한 좌석 총수(사용 중 포함)이므로 잔여석으로 쓰지 않습니다.
 
 ## 4. 예약 (학생 세션)
 
